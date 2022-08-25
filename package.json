@@ -1,0 +1,31 @@
+{
+  "name": "wyze-api",
+  "version": "1.0.0",
+  "description": "An unoficial API wrapper for Wyze products.",
+  "homepage": "https://github.com/jfarmer08/wyze-api",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "wyze",
+    "api",
+    "node",
+    "sensors",
+    "wyzecam",
+    "wyze-node",
+    "wyze bulbs",
+    "wyze sense"
+  ],
+  "author": "Allen Farmer",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.21.1",
+    "hmac": "1.0.1",
+    "md5": "^2.2.1",
+    "moment": "^2.24.0",
+    "node-localstorage": "^2.1.6",
+    "urllib": "3.1.2",
+    "uuid": "8.3.2"
+  }
+}
