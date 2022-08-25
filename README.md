@@ -50,6 +50,8 @@ Use this helper methods to interact with wyze-node.
 - wyze.getDeviceSortList()
 - wyze.turnOn(device)
 - wyze.turnOff(device)
+- wyze.lock(device)
+- wyze.unlock(device)
 - wyze.getDeviceStatus(device)
 - wyze.getDeviceState(device)
 
@@ -64,5 +66,6 @@ Use this helper methods to interact with wyze-node.
 - wyze.getDeviceInfo(deviceMac, deviceModel)
 - wyze.getPropertyList(deviceMac, deviceModel)
 - wyze.setProperty(deviceMac, deviceModel, propertyId, propertyValue)
+- wyze.controllock(deviceMac, deviceModel, action)
 
 

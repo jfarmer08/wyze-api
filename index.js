@@ -259,7 +259,7 @@ class Wyze {
    * control lock
    * @returns {data}
    */
-   async controllock (deviceMac, deviceModel, action) {
+   async controllock(deviceMac, deviceModel, action) {
 
     let body = {}
       body["action"] = action
@@ -362,13 +362,17 @@ class Wyze {
   async turnOff(device) {
     return await this.runAction(device.mac, device.product_model, 'power_off')
   }
-
+  /**
+  * unlock Lock
+  */
   async unlock(device) {
-    return await this.controlLock(device.mac, device.product_model, 'remoteUnlock')
+    return await this.controllock(device.mac, device.product_model, 'remoteUnlock')
   }
-
+  /**
+  * lock Lock
+  */
   async lock(device) {
-    return await this.controlLock(device.mac, device.product_model, 'remotelock')
+    return await this.controllock(device.mac, device.product_model, 'remoteLock')
   }
 
   /**
