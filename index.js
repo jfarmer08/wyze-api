@@ -288,6 +288,10 @@ class Wyze {
    getLockUuid (deviceMac, deviceModel) {
     return deviceMac.replace(`${deviceModel}.`, '')
   }
+  async getObjects(){
+    const result = await this.getObjectList()
+    return result
+  }
   /**
   * getDeviceList
   */

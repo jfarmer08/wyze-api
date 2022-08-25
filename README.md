@@ -68,4 +68,9 @@ Use this helper methods to interact with wyze-node.
 - wyze.setProperty(deviceMac, deviceModel, propertyId, propertyValue)
 - wyze.controllock(deviceMac, deviceModel, action)
 
+## Other Info
 
+Special thanks to the following projects for reference and inspiration:
+
+- [ha-wyzeapi](https://github.com/JoshuaMulliken/ha-wyzeapi), a Wyze integration for Home Assistant.
+- [wyze-node](https://github.com/noelportugal/wyze-node), a Node library for the Wyze API.
