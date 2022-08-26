@@ -255,6 +255,67 @@ class Wyze {
   return result.data
 }
 
+/**
+ * run action list
+ * @device = Dict of device
+ * @propertyId = From Device Prop
+ * @propertyValue = From Device Prop
+ * @actionKey = power_on - power-off
+ * @returns {data}
+ */
+  async runActionList (mac, product_model, propertyId, propertyValue, actionKey) {
+    let result
+    try {
+      await this.getTokens();
+      if (!this.accessToken) {
+        await this.login()
+      }
+
+      const plist = [
+        {
+          pid: propertyId,
+          pvalue: String(propertyValue)
+        }
+      ]
+      if (propertyId !== 'P3') {
+        plist.push({
+          pid: 'P3',
+          pvalue: '1'
+        })
+      }
+      const innerList = [
+        {
+          mac: mac,
+          plist
+        }
+      ]
+      const actionParams = {
+        list: innerList
+      }
+      const actionList = [
+        {
+          instance_id: mac,
+          action_params: actionParams,
+          provider_key: product_model,
+          action_key: actionKey
+        }
+      ]
+      const data = {
+        action_list: actionList
+      }
+
+      result = await axios.post(wyzeConstants.API_BASE_URL + wyzeConstants.WYZE_RUN_ACTION_LIST, await this.getRequestData(data))
+
+      if (result.data.msg === 'AccessTokenError') {
+        await this.getRefreshToken()
+        return this.runAction(instanceId, actionKey)
+      }
+    } catch (e) {
+      throw e
+    }
+    return result.data
+  }
+
   /**
    * control lock
    * @returns {data}
@@ -365,6 +426,19 @@ class Wyze {
   */
   async turnOff(device) {
     return await this.runAction(device.mac, device.product_model, 'power_off')
+  }
+  /**
+  * turnOn
+  */
+    async turnMeshOn(device) {
+    return await this.runActionList(device.mac, device.product_model ,'P3' , '1','set_mesh_property')
+  }
+
+  /**
+  * turnOff
+  */
+  async turnMeshOff(device) {
+    return await this.runActionList(device.mac, device.product_model ,'P3' , '0','set_mesh_property')
   }
   /**
   * unlock Lock
