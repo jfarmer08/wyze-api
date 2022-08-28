@@ -19,18 +19,22 @@ class Constants {
     API_BASE_URL = 'https://api.wyzecam.com';
     LOCK_BASE_URL = 'https://yd-saas-toc.wyzecam.com';
 
-    //Wyze URLs
-    LOCK_CONTROL_URL = '/openapi/lock/v1/control'
-
-    WYZE_USER_LOGIN = '/user/login'
+    // Wyze Login urls
+    WYZE_USER_LOGIN = '/user/login';
     WYZE_REFRESH_TOKEN = '/app/user/refresh_token';
+
+    // Wyze URLs
+    LOCK_CONTROL_URL = '/openapi/lock/v1/control';
+    LOCK_INFO_URL = '/openapi/lock/v1/info';
+
+
     WYZE_GET_OBJECT_LIST = '/app/v2/home_page/get_object_list';
     WYZE_GET_PROPERTY_LIST = '/app/v2/device/get_property_list';
     WYZE_SET_PROPERTY = '/app/v2/device/set_property';
     WYZE_LOCK_CONTROL_URL = '/openapi/lock/v1/control';
     WYZE_RUN_ACTION = '/app/v2/auto/run_action';
-    WYZE_GET_DEVICE_INFO = "/app/v2/device/get_device_info";
-    WYZE_RUN_ACTION_LIST = '/app/v2/auto/run_action_list'
+    WYZE_GET_DEVICE_INFO = '/app/v2/device/get_device_info';
+    WYZE_RUN_ACTION_LIST = '/app/v2/auto/run_action_list';
     // Crypto Secrets
     FORD_APP_KEY = '275965684684dbdaf29a0ed9' // Required for Locks
     FORD_APP_SECRET = '4deekof1ba311c5c33a9cb8e12787e8c' // Required for Locks

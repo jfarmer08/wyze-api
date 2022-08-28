@@ -9,6 +9,8 @@ const LocalStorage = require('node-localstorage').LocalStorage
 const localStorage = new LocalStorage('./scratch')
 
 const WyzeConstants = require('./constants')
+const WyzeCrypto = require('./crypto')
+const wyzeCrypto = new WyzeCrypto('./crypto')
 const WyzePayloadFactory = require('./payloadFactory')
 const wyzeConstants = new WyzeConstants('./constants')
 const wyzePayloadFactory = new WyzePayloadFactory('./payloadFactory')
@@ -79,7 +81,7 @@ class Wyze {
     localStorage.setItem('refresh_token', refreshToken)
     this.accessToken = accessToken
     this.refreshToken = refreshToken
-  }
+  }   
 
   /**
    * login to get access_token
@@ -321,24 +323,68 @@ class Wyze {
    * @returns {data}
    */
    async controllock(deviceMac, deviceModel, action) {
-
-    let body = {}
-      body["action"] = action
-      body["uuid"] = this.getLockUuid(deviceMac, deviceModel)
-
-    var payload = wyzePayloadFactory.ford_create_payload(this.accessToken, body, wyzeConstants.LOCK_CONTROL_URL, "post")
-
     let result
 
     try {
+      let body = {}
+        body["action"] = action
+        body["uuid"] = this.getLockUuid(deviceMac, deviceModel)
+
+      var payload = wyzePayloadFactory.ford_create_payload(this.accessToken, body, wyzeConstants.LOCK_CONTROL_URL, "post")
+
       result = await axios.post(wyzeConstants.LOCK_BASE_URL + wyzeConstants.LOCK_CONTROL_URL, payload)
+
     } catch (e) {
           throw e
     }
     return result.data
   }
 
+  async getLockInfo(deviceMac,deviceModel) {
+    let result
+    const device_uuid = deviceMac.split('.')[2];
+    try {
+      let body = {}
+        body["uuid"] = this.getLockUuid(deviceMac, deviceModel)
+        body["with_keypad"] = '1'
 
+  
+      var payload = wyzePayloadFactory.ford_create_payload(this.accessToken, body, wyzeConstants.LOCK_INFO_URL, "get")
+      
+      console.log(payload)
+      result = await axios.get(wyzeConstants.LOCK_BASE_URL + wyzeConstants.LOCK_INFO_URL, payload)
+    
+    } catch (e) {
+        throw e
+    }
+    return result.data;
+  }
+async GetUserProfile(){
+    var payload = wyzePayloadFactory.olive_create_user_info_payload();
+    var signature = wyzeCrypto.olive_create_signature_single(payload, this.accessToken);
+    let config = {
+        headers :{
+          'Accept-Encoding': 'gzip',
+          'User-Agent': 'myapp',
+          'appid': wyzeConstants.OLIVE_APP_ID,
+          'appinfo': wyzeConstants.APPINFO,
+          'phoneid': wyzeConstants.PHONEID,
+          'access_token': this.accessToken,
+          'signature2': signature
+         
+        },
+        payload :{
+          'nonce' : payload.nonce
+        }
+    }
+
+    console.log(config)
+    var url = 'https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile';
+
+    const response_json = await axios.get(url, config);
+
+    return response_json.data;
+  }
   
   /**
   * Helper functions
@@ -452,6 +498,12 @@ class Wyze {
   async lock(device) {
     return await this.controllock(device.mac, device.product_model, 'remoteLock')
   }
+  /**
+  * lock Lock
+  */
+     async lockInfo(device) {
+      return await this.getLockInfo(device.mac, device.product_model)
+    }
 
   /**
   * getDeviceStatus
