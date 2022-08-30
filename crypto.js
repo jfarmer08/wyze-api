@@ -12,11 +12,11 @@ class WyzeCrypto {
     ford_create_signature(url_path, request_method, data) {
         var body = request_method + url_path;
         var keys = Object.keys(data).sort()
-        for (var i=0; i<keys.length; i++) { // now lets iterate in sort order
+        for (var i = 0; i < keys.length; i++) { // now lets iterate in sort order
             var key = keys[i];
             var value = data[key];
             body += key + '=' + value + '&';
-        } 
+        }
         const payload = body.slice(0, -1).concat(wyzeConstants.FORD_APP_SECRET)
         var urlencoded = encodeURIComponent(payload)
         var en = crypto.createHash('md5').update(utf8.encode(urlencoded))
@@ -27,30 +27,29 @@ class WyzeCrypto {
         var access_key = access_token + wyzeConstants.OLIVE_SIGNING_SECRET
         var secret = crypto.createHash('md5').update(utf8.encode(access_key))
         var secrestDig = secret.digest('hex')
-        var hmac = crypto.createHmac("md5", utf8.encode(secrestDig)).update(utf8.encode(payload),crypto.md5)
+        var hmac = crypto.createHmac("md5", utf8.encode(secrestDig)).update(utf8.encode(payload), crypto.md5)
         var digest = hmac.digest('hex')
         return digest
-        }
+    }
 
     olive_create_signature(payload, access_token) {
-            var body = '';
-            var keys = Object.keys(payload).sort()
-            for (var i=0; i<keys.length; i++) { // now lets iterate in sort order
-                var key = keys[i];
-                var value = payload[key];
-                body += key + '=' + String(value) + '&';
-            } 
-            body = body.slice(0, -1)
+        var body = '';
+        var keys = Object.keys(payload).sort()
+        for (var i = 0; i < keys.length; i++) { // now lets iterate in sort order
+            var key = keys[i];
+            var value = payload[key];
+            body += key + '=' + String(value) + '&';
+        }
+
+        body = body.slice(0, -1)
         var access_key = access_token + wyzeConstants.OLIVE_SIGNING_SECRET
         var secret = crypto.createHash('md5').update(utf8.encode(access_key))
         var secrestDig = secret.digest('hex')
-        var hmac = crypto.createHmac("md5", utf8.encode(secret)).update(utf8.encode(body),crypto.md5)
+        var hmac = crypto.createHmac("md5", utf8.encode(secrestDig)).update(utf8.encode(body), crypto.md5)
         var digest = hmac.digest('hex')
         return digest
-        }
+    }
 
 }
 
 module.exports = WyzeCrypto
-
-
