@@ -1,6 +1,8 @@
 # wyze-api
 This is an unofficial Wyze API. This library uses the internal APIs from the Wyze mobile app. A list of all Wyze devices can be retrieved to check the status of Wyze Cameras, Wyze Sense, Wyze Bulbs, Wyze Plugs and possibly Wyze locks (untested). This API can turn on and off cameras, lightbulbs and smart plugs.
 
+This is a work in progress and will have alot of updates in the future. 
+
 ## Setup
 `npm install wyze-api --save`
 
