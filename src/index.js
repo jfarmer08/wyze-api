@@ -49,7 +49,6 @@ module.exports = class WyzeAPI {
 
     this.dumpData = false // Set this to true to log the Wyze object data blob one time at startup.
     
-    //Timer keeps this alive
     // Token is good for 216,000 seconds (60 hours) but 48 hours seems like a reasonable refresh interval 172800
     if (this.refreshTokenTimerEnabled === true){
       setInterval(this.refreshToken.bind(this), 172800)
@@ -125,8 +124,6 @@ module.exports = class WyzeAPI {
 
       throw e
     }
-
-    // Catch-all error message
     if (result.data.msg) {
       throw new Error(result.data.msg)
     }
@@ -361,7 +358,7 @@ module.exports = class WyzeAPI {
   async getIotProp(deviceMac, keys) {
     await this.maybeLogin()
     let result
-    var payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
+    let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
     var signature = crypto.oliveCreateSignature(payload, this.access_token);
     let config = {
       headers: {
@@ -769,10 +766,55 @@ module.exports = class WyzeAPI {
 
   async getDeviceStatus(device) { return device.device_params}
 
-  async cameraFloodLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel,"P1056", "1")} //on or open works for Spotlight
+  async cameraFloodLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "1")} //on or open works for Spotlight
+  async cameraFloodLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "2")} //off or closed works for SpotLight
 
-  async cameraFloodLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel,"P1056", "2")} //off or closed works for SpotLight
+  async cameraTurnOn(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel, "P3", 1 ,'power_on')}
+  async cameraTurnOff(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel, "P3", 0 ,'power_off')}
 
+  async cameraSirenOn(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel, "P1049", 2 ,'siren_on')}
+  async cameraSirenOff(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel ,"P1049", 1 ,'siren_off')}
+
+  async cameraMotionOn(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",1)}
+  async cameraMotionOff(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",0)}
+  
+  async cameraSoundNotificationOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '1')}
+  async cameraSoundNotificationOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '0')}
+
+  async cameraAllNotificationsOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1','1')}
+  async cameraAllNotificationsOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1','0')}
+
+  async cameraMotionRecordingOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1047','1')}
+  async cameraMotionRecordingOff(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1047','0')}
+
+  //WyzeLight
+  async lightTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "0")}
+  async lightTurnOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "1")}
+  async lightSetBrightness(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1501", value)}
+  async setColorTemperature(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1502", value)}
+
+   // Wall Switch
+  async wallSwitchSetIotProp(deviceMac, productModel, prop, value) {
+    let response
+    try {
+      this.updating = true
+      response = await this.setIotProp(deviceMac, productModel, prop, value)
+      this.lastTimestamp = response.ts
+    } finally {
+      this.updating = false
+      return response
+    }
+  }
+
+  async power_onoff(deviceMac, deviceModel, value) {
+    const response = await this.wallSwitchSetIotProp(deviceMac, deviceModel, 'switch-power', value)
+    return response
+  }
+
+  async iot_onoff(deviceMac, deviceModel, value) {
+    const response = await this.wallSwitchSetIotProp(deviceMac, deviceModel, 'switch-iot', value)
+    return response
+  }
   /**
   * getDeviceState
   */
