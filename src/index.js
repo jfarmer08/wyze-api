@@ -607,8 +607,8 @@ module.exports = class WyzeAPI {
   async thermostatGetIotProp(deviceMac, keys) {
     await this.maybeLogin()
     let result
-    var payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
-    var signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
     let config = {
       headers: {
         'Accept-Encoding': 'gzip',
@@ -622,7 +622,7 @@ module.exports = class WyzeAPI {
       params: payload
     }
     try {
-      var url = 'https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop'
+      let url = 'https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop'
       if(this.logging == "debug") this.log.info(`Performing request: ${url}`)
       result = await axios.get(url, config)
       if(this.logging == "debug") this.log.info(`API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`)
@@ -706,134 +706,72 @@ module.exports = class WyzeAPI {
     }
   }
   
-
-  getUuid (deviceMac, deviceModel) {
-    return deviceMac.replace(`${deviceModel}.`, '')
-  }
-
   /**
   * Helper functions
   */
 
- /**
-  * getDeviceList
-  */
+  getUuid (deviceMac, deviceModel) { return deviceMac.replace(`${deviceModel}.`, '')}
+
   async getObjects(){
     const result = await this.getObjectList()
     return result
   }
-  /**
-  * getDeviceList
-  */
+
   async getDeviceList() {
     const result = await this.getObjectList()
     return result.data.device_list
   }
 
-  /**
-  * getDeviceByName
-  */
   async getDeviceByName(nickname) {
     const result = await this.getDeviceList()
     const device = result.find(device => device.nickname.toLowerCase() === nickname.toLowerCase())
     return device
   }
 
-  /**
-  * getDeviceByMac
-  */
   async getDeviceByMac(mac) {
     const result = await this.getDeviceList()
     const device = result.find(device => device.mac === mac)
     return device
   }
 
-  /**
-  * getDevicesByType
-  */
   async getDevicesByType(type) {
     const result = await this.getDeviceList()
     const devices = result.filter(device => device.product_type.toLowerCase() === type.toLowerCase())
     return devices
   }
 
-  /**
-  * getDevicesByModel
-  */
   async getDevicesByModel(model) {
     const result = await this.getDeviceList()
     const devices = result.filter(device => device.product_model.toLowerCase() === model.toLowerCase())
     return devices
   }
 
-  /**
-  * getDeviceGroupsList
-  */
   async getDeviceGroupsList() {
     const result = await this.getObjectList()
     return result.data.device_group_list
   }
 
-  /**
-  * getDeviceSortList
-  */
   async getDeviceSortList() {
     const result = await this.getObjectList()
     return result.data.device_sort_list
   }
+  
+  async turnOn(device) { return await this.runAction(device.mac, device.product_model, 'power_on')}
 
+  async turnOff(device) { return await this.runAction(device.mac, device.product_model, 'power_off')}
 
-  /**
-  * turnOn
-  */
-  async turnOn(device) {
-    return await this.runAction(device.mac, device.product_model, 'power_on')
-  }
+  async turnMeshOn(device) { return await this.runActionList(device.mac, device.product_model ,'P3' , '1','set_mesh_property')}
+  async turnMeshOff(device) { return await this.runActionList(device.mac, device.product_model ,'P3' , '0','set_mesh_property')}
+  async unlockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteUnlock')}
+  async lockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteLock')}
 
-  /**
-  * turnOff
-  */
-  async turnOff(device) {
-    return await this.runAction(device.mac, device.product_model, 'power_off')
-  }
-  /**
-  * turnOn
-  */
-    async turnMeshOn(device) {
-    return await this.runActionList(device.mac, device.product_model ,'P3' , '1','set_mesh_property')
-  }
+  async lockInfo(device) { return await this.getLockInfo(device.mac, device.product_model)}
 
-  /**
-  * turnOff
-  */
-  async turnMeshOff(device) {
-    return await this.runActionList(device.mac, device.product_model ,'P3' , '0','set_mesh_property')
-  }
-  /**
-  * unlock Lock
-  */
-  async unlock(device) {
-    return await this.controllock(device.mac, device.product_model, 'remoteUnlock')
-  }
-  /**
-  * lock Lock
-  */
-  async lock(device) {
-    return await this.controllock(device.mac, device.product_model, 'remoteLock')
-  }
-  /**
-  * lock Lock
-  */
-    async lockInfo(device) {
-      return await this.getLockInfo(device.mac, device.product_model)
-    }
+  async getDeviceStatus(device) { return device.device_params}
 
-  /**
-  * getDeviceStatus
-  */
-  async getDeviceStatus(device) {
-    return device.device_params
-  }
+  async cameraFloodLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel,"P1056", "1")} //on or open works for Spotlight
+
+  async cameraFloodLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel,"P1056", "2")} //off or closed works for SpotLight
 
   /**
   * getDeviceState
