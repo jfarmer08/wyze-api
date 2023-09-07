@@ -1,8 +1,3 @@
-const {
-    v4: uuidv4
-} = require('uuid');
-
-
 module.exports = Object.freeze({
     // Crypto Secrets
     fordAppKey : '275965684684dbdaf29a0ed9', // Required for Locks

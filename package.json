@@ -1,14 +1,15 @@
 {
   "name": "wyze-api",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "An unoficial API wrapper for Wyze products.",
   "homepage": "https://github.com/jfarmer08/wyze-api",
-  "main": "index.js",
+  "main": "./src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
     "wyze",
+    "wyze-api",
     "api",
     "node",
     "sensors",
@@ -21,12 +22,10 @@
   "license": "MIT",
   "dependencies": {
     "axios": "1.5.0",
-    "md5": "2.3.0",
     "moment": "2.29.4",
     "urllib": "3.18.0",
-    "uuid": "9.0.0",
     "crypto-js": "4.1.1",
-    "utf8" : "3.0.0",
+    "utf8": "3.0.0",
     "colorsys": "^1.0.22",
     "base64-js": "1.5.1",
     "querystring": "0.2.1"
@@ -36,5 +35,15 @@
       "type": "paypal",
       "url": "https://paypal.me/AllenFarmer"
     }
-  ]
+  ],
+  "directories": {
+    "example": "example"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jfarmer08/wyze-api.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jfarmer08/wyze-api/issues"
+  }
 }

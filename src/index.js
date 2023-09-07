@@ -1,9 +1,6 @@
 const axios = require('axios')
-const md5 = require('md5')
 const fs = require('fs').promises
 const path = require('path')
-const { v4: uuidv4 } = require('uuid');
-
 
 const payloadFactory = require('./payloadFactory')
 const crypto = require('./crypto')
@@ -14,6 +11,7 @@ module.exports = class WyzeAPI {
   constructor (options, log) {
     this.log = log
     this.persistPath = options.persistPath
+    this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false
     // User login parameters
     this.username = options.username
     this.password = options.password
@@ -49,15 +47,13 @@ module.exports = class WyzeAPI {
     this.access_token = ''
     this.refresh_token = ''
 
- 
-
     this.dumpData = false // Set this to true to log the Wyze object data blob one time at startup.
     
     //Timer keeps this alive
     // Token is good for 216,000 seconds (60 hours) but 48 hours seems like a reasonable refresh interval 172800
-    //setInterval(this.refreshToken.bind(this), 172800)
-
-    this.logging= "debug"
+    if (this.refreshTokenTimerEnabled === true){
+      setInterval(this.refreshToken.bind(this), 172800)
+    }
   }
 
   getRequestData (data = {}) {
@@ -211,7 +207,7 @@ module.exports = class WyzeAPI {
   }
 
   _tokenPersistPath () {
-    const uuid = "test"
+    const uuid = 'test'
     //homebridge.user.persistPath()
     return path.join(this.persistPath, `wyze-${uuid}.json`)
   }
@@ -266,7 +262,6 @@ module.exports = class WyzeAPI {
   }
 
   async runActionList (deviceMac, deviceModel, propertyId, propertyValue, actionKey) {
-    // Wyze Color Bulbs use a new run_action_list endpoint instead of set_property
     const plist = [
       {
         pid: propertyId,
@@ -363,7 +358,7 @@ module.exports = class WyzeAPI {
     return result.data
   }
 
-  async  getIotProp(deviceMac, keys) {
+  async getIotProp(deviceMac, keys) {
     await this.maybeLogin()
     let result
     var payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
@@ -714,5 +709,140 @@ module.exports = class WyzeAPI {
 
   getUuid (deviceMac, deviceModel) {
     return deviceMac.replace(`${deviceModel}.`, '')
+  }
+
+  /**
+  * Helper functions
+  */
+
+ /**
+  * getDeviceList
+  */
+  async getObjects(){
+    const result = await this.getObjectList()
+    return result
+  }
+  /**
+  * getDeviceList
+  */
+  async getDeviceList() {
+    const result = await this.getObjectList()
+    return result.data.device_list
+  }
+
+  /**
+  * getDeviceByName
+  */
+  async getDeviceByName(nickname) {
+    const result = await this.getDeviceList()
+    const device = result.find(device => device.nickname.toLowerCase() === nickname.toLowerCase())
+    return device
+  }
+
+  /**
+  * getDeviceByMac
+  */
+  async getDeviceByMac(mac) {
+    const result = await this.getDeviceList()
+    const device = result.find(device => device.mac === mac)
+    return device
+  }
+
+  /**
+  * getDevicesByType
+  */
+  async getDevicesByType(type) {
+    const result = await this.getDeviceList()
+    const devices = result.filter(device => device.product_type.toLowerCase() === type.toLowerCase())
+    return devices
+  }
+
+  /**
+  * getDevicesByModel
+  */
+  async getDevicesByModel(model) {
+    const result = await this.getDeviceList()
+    const devices = result.filter(device => device.product_model.toLowerCase() === model.toLowerCase())
+    return devices
+  }
+
+  /**
+  * getDeviceGroupsList
+  */
+  async getDeviceGroupsList() {
+    const result = await this.getObjectList()
+    return result.data.device_group_list
+  }
+
+  /**
+  * getDeviceSortList
+  */
+  async getDeviceSortList() {
+    const result = await this.getObjectList()
+    return result.data.device_sort_list
+  }
+
+
+  /**
+  * turnOn
+  */
+  async turnOn(device) {
+    return await this.runAction(device.mac, device.product_model, 'power_on')
+  }
+
+  /**
+  * turnOff
+  */
+  async turnOff(device) {
+    return await this.runAction(device.mac, device.product_model, 'power_off')
+  }
+  /**
+  * turnOn
+  */
+    async turnMeshOn(device) {
+    return await this.runActionList(device.mac, device.product_model ,'P3' , '1','set_mesh_property')
+  }
+
+  /**
+  * turnOff
+  */
+  async turnMeshOff(device) {
+    return await this.runActionList(device.mac, device.product_model ,'P3' , '0','set_mesh_property')
+  }
+  /**
+  * unlock Lock
+  */
+  async unlock(device) {
+    return await this.controllock(device.mac, device.product_model, 'remoteUnlock')
+  }
+  /**
+  * lock Lock
+  */
+  async lock(device) {
+    return await this.controllock(device.mac, device.product_model, 'remoteLock')
+  }
+  /**
+  * lock Lock
+  */
+    async lockInfo(device) {
+      return await this.getLockInfo(device.mac, device.product_model)
+    }
+
+  /**
+  * getDeviceStatus
+  */
+  async getDeviceStatus(device) {
+    return device.device_params
+  }
+
+  /**
+  * getDeviceState
+  */
+  async getDeviceState(device) {
+    let state = device.device_params.power_switch !== undefined ? (device.device_params.power_switch === 1 ? 'on' : 'off') : ''
+    if (!state) {
+      state = device.device_params.open_close_state !== undefined ? (device.device_params.open_close_state === 1 ? 'open' : 'closed') : ''
+    }
+    return state
   }
 }

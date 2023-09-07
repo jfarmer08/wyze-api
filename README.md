@@ -9,10 +9,16 @@ This is a work in progress and will have alot of updates in the future.
 ## Example
 ```
 const Wyze = require('wyze-api')
+const Logger = require("@ptkdev/logger")
+const logger = new Logger()
 
 const options = {
   username: process.env.username,
-  password: process.env.password
+  password: process.env.password,
+  keyId: process.env.keyId,
+  apiKey: process.env.apiKey,
+  persistPath: "./",
+  logging: "none"
 }
 const wyze = new Wyze(options)
 
@@ -41,7 +47,7 @@ const wyze = new Wyze(options)
 
 ## Helper methods
 
-Use this helper methods to interact with wyze-node.
+Use this helper methods to interact with wyze-api.
 
 - wyze.getDeviceList()
 - wyze.getDeviceByName(nickname)
