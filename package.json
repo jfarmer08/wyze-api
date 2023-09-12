@@ -1,6 +1,6 @@
 {
   "name": "wyze-api",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "An unoficial API wrapper for Wyze products.",
   "homepage": "https://github.com/jfarmer08/wyze-api",
   "main": "./src/index.js",
@@ -28,7 +28,8 @@
     "utf8": "3.0.0",
     "colorsys": "^1.0.22",
     "base64-js": "1.5.1",
-    "querystring": "0.2.1"
+    "querystring": "0.2.1",
+    "uuid-by-string": "4.0.0"
   },
   "funding": [
     {

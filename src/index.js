@@ -1,6 +1,7 @@
 const axios = require('axios')
 const fs = require('fs').promises
 const path = require('path')
+const getUuid = require('uuid-by-string')
 
 const payloadFactory = require('./payloadFactory')
 const crypto = require('./crypto')
@@ -204,8 +205,8 @@ module.exports = class WyzeAPI {
   }
 
   _tokenPersistPath () {
-    const uuid = 'test'
-    //homebridge.user.persistPath()
+   // const uuid = 'test'
+    const uuid = getUuid(this.username)
     return path.join(this.persistPath, `wyze-${uuid}.json`)
   }
 
