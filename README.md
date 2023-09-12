@@ -20,7 +20,7 @@ const options = {
   persistPath: "./",
   logging: "none"
 }
-const wyze = new Wyze(options)
+const wyze = new Wyze(options, logger)
 
   ; (async () => {
     let device, state, result
@@ -75,6 +75,16 @@ Use this helper methods to interact with wyze-api.
 - wyze.getPropertyList(deviceMac, deviceModel)
 - wyze.setProperty(deviceMac, deviceModel, propertyId, propertyValue)
 - wyze.controllock(deviceMac, deviceModel, action)
+- wyze.getLockInfo(deviceMac, deviceModel)
+- wyze.getIotProp(deviceMac, keys)
+- wyze.setIotProp(deviceMac, product_model, propKey, value)
+- wyze.getUserProfile()
+- wyze.disableRemeAlarm(hms_id)
+- wyze.getPlanBindingListByUser()
+- wyze.monitoringProfileStateStatus(hms_id)
+- wyze.monitoringProfileActive(hms_id, home, away)
+- wyze.getPlanBindingListByUser()
+- wyze.thermostatGetIotProp(deviceMac, keys)
 
 ## Other Info
 

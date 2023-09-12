@@ -754,11 +754,11 @@ module.exports = class WyzeAPI {
   }
   
   async turnOn(device) { return await this.runAction(device.mac, device.product_model, 'power_on')}
-
   async turnOff(device) { return await this.runAction(device.mac, device.product_model, 'power_off')}
 
   async turnMeshOn(device) { return await this.runActionList(device.mac, device.product_model ,'P3' , '1','set_mesh_property')}
   async turnMeshOff(device) { return await this.runActionList(device.mac, device.product_model ,'P3' , '0','set_mesh_property')}
+
   async unlockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteUnlock')}
   async lockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteLock')}
 
@@ -794,25 +794,41 @@ module.exports = class WyzeAPI {
   async setColorTemperature(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1502", value)}
 
    // Wall Switch
-  async wallSwitchSetIotProp(deviceMac, productModel, prop, value) {
-    let response
-    try {
-      this.updating = true
-      response = await this.setIotProp(deviceMac, productModel, prop, value)
-      this.lastTimestamp = response.ts
-    } finally {
-      this.updating = false
-      return response
-    }
+  async wallSwitchPowerOn(deviceMac, deviceModel) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'switch-power', true)
+    return response
   }
-
-  async power_onoff(deviceMac, deviceModel, value) {
-    const response = await this.wallSwitchSetIotProp(deviceMac, deviceModel, 'switch-power', value)
+  async wallSwitchPowerOff(deviceMac, deviceModel) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'switch-power', false)
     return response
   }
 
-  async iot_onoff(deviceMac, deviceModel, value) {
-    const response = await this.wallSwitchSetIotProp(deviceMac, deviceModel, 'switch-iot', value)
+  async wallSwitchIotOn(deviceMac, deviceModel, value) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'switch-iot', true)
+    return response
+  }
+  async wallSwitchIotOff(deviceMac, deviceModel, value) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'switch-iot', false)
+    return response
+  }
+
+  async wallSwitchLedStateOn(deviceMac, deviceModel) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'led_state', true)
+    return response
+  }
+
+  async wallSwitchLedStateOff(deviceMac, deviceModel) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'led_state', false)
+    return response
+  }
+
+  async wallSwitchVacationModeOn(deviceMac, deviceModel) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 0)
+    return response
+  }
+
+  async wallSwitchVacationModeOff(deviceMac, deviceModel) {
+    const response = await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 1)
     return response
   }
   /**
