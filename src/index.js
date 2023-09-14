@@ -259,6 +259,23 @@ module.exports = class WyzeAPI {
     return result.data
   }
 
+  async runAction (deviceMac, deviceModel, actionKey) {
+
+    const data = {
+      instance_id: deviceMac,
+      provider_key: deviceModel,
+      action_key: actionKey,
+      action_params: {},
+      custom_string: ''
+    }
+    console.log(data)
+    if(this.logging == "debug") this.log.info(`run_action Data Body: ${JSON.stringify(data)}`)
+
+    const result = await this.request('app/v2/auto/run_action', data)
+
+    return result.data
+  }
+
   async runActionList (deviceMac, deviceModel, propertyId, propertyValue, actionKey) {
     const plist = [
       {
@@ -754,8 +771,13 @@ module.exports = class WyzeAPI {
     return result.data.device_sort_list
   }
   
-  async turnOn(device) { return await this.runAction(device.mac, device.product_model, 'power_on')}
-  async turnOff(device) { return await this.runAction(device.mac, device.product_model, 'power_off')}
+  async cameraTurnOn(deviceMac,deviceModel) { return await this.runAction(deviceMac, deviceModel, 'power_on')}
+  async cameraTurnOff(deviceMac,deviceModel) { return await this.runAction(deviceMac, deviceModel, 'power_off')}
+
+  async garageDoor(deviceMac,deviceModel) { return await this.runAction(deviceMac, deviceModel, 'garage_door_trigger')}
+
+  async cameraSirenOn(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'siren_on')}
+  async cameraSirenOff(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'siren_off')}
 
   async turnMeshOn(device) { return await this.runActionList(device.mac, device.product_model ,'P3' , '1','set_mesh_property')}
   async turnMeshOff(device) { return await this.runActionList(device.mac, device.product_model ,'P3' , '0','set_mesh_property')}
@@ -769,12 +791,6 @@ module.exports = class WyzeAPI {
 
   async cameraFloodLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "1")} //on or open works for Spotlight
   async cameraFloodLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "2")} //off or closed works for SpotLight
-
-  async cameraTurnOn(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel, "P3", 1 ,'power_on')}
-  async cameraTurnOff(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel, "P3", 0 ,'power_off')}
-
-  async cameraSirenOn(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel, "P1049", 2 ,'siren_on')}
-  async cameraSirenOff(deviceMac, deviceModel) { await this.runActionListOnOff(deviceMac, deviceModel ,"P1049", 1 ,'siren_off')}
 
   async cameraMotionOn(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",1)}
   async cameraMotionOff(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",0)}
