@@ -771,6 +771,8 @@ module.exports = class WyzeAPI {
     return result.data.device_sort_list
   }
   
+  async getDevicePID(deviceMac, deviceModel)  { return await this.getPropertyList(deviceMac,deviceModel)}
+  
   async cameraTurnOn(deviceMac,deviceModel) { return await this.runAction(deviceMac, deviceModel, 'power_on')}
   async cameraTurnOff(deviceMac,deviceModel) { return await this.runAction(deviceMac, deviceModel, 'power_off')}
 
