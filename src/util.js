@@ -4,9 +4,9 @@ const base64 = require('base64-js')
 const PADDING = crypto.enc.Hex.parse("05")
 
 function pad(plainText) {
-  const raw = crypto.enc.Utf8.parse(plainText)
+  const raw = btoa(plainText)
   const padNum = crypto.blockSize - (raw.sigBytes % crypto.blockSize)
-  const padded = raw.concat(PADDING.repeat(padNum))
+  const padded = raw.concat(PADDING * padNum)
   return padded
 }
 

@@ -25,7 +25,7 @@ const options = {
   keyId: process.env.keyId,
   apiKey: process.env.apiKey,
   persistPath: "./",
-  logging: "none"
+  logLevel: "none"
 }
 const wyze = new Wyze(options, logger)
 
