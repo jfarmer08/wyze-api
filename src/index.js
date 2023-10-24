@@ -13,6 +13,7 @@ module.exports = class WyzeAPI {
     this.log = log
     this.persistPath = options.persistPath
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false
+    this.lowBatteryPercentage = options.lowBatteryPercentage || 30
     // User login parameters
     this.username = options.username
     this.password = options.password
@@ -927,7 +928,8 @@ module.exports = class WyzeAPI {
   }
 
 
-  getDeviceState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState} }
+  getLockDoorState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState} }
+  getLeakSensorState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState} }
   getLockState(deviceState) { if (deviceState == 2) { return 0 } else { return 1} }
   checkBatteryVoltage(value) { if (value >= 100) { return 100 } else if ( value == "undefined" || value == null) { return 1 } else { return value }}
   rangeToFloat(value, min, max) { return (value - min) / (max - min) }
@@ -935,4 +937,5 @@ module.exports = class WyzeAPI {
   kelvinToMired(value) { return Math.round(1000000 / value) }
   checkBrightnessValue(value) { if(value >= 1 || value <= 100) { return value } else return 1 } 
   checkColorTemp(color) { if (color >= 500) { return 500 } else { return color }}
+  checkLowBattery(batteryVolts) {if(this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {return 1} else return 0}
 }
