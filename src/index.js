@@ -91,7 +91,7 @@ module.exports = class WyzeAPI {
         }
       }
 
-      this.log.error('Error, logLevel in and trying again')
+      this.log.error('Error, logging in and trying again')
 
       await this.login()
       return this._performRequest(url, this.getRequestData(data))
@@ -116,22 +116,21 @@ module.exports = class WyzeAPI {
       result = await axios(config)
       if(this.apiLogEnabled == true) this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
       if (this.dumpData) {
-        if(this.logLevel == "debug") this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
+        if(this.apiLogEnabled == true) this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
         this.dumpData = false // Only want to do this once at start-up
       }
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
       if (e.response) {
-        this.log.error(`Response PerformRequest (${e.response.statusText}): ${JSON.stringify(e.response.data)}`)
+        this.log.error(`Response PerformRequest (${e.response}): ${JSON.stringify(e.response.data)}`)
       }
 
       throw e
     }
     if (result.data.msg) {
+      if (result.data.msg == "DeviceIsOffline" ) { return result} else
       throw new Error(result.data.msg)
-    }
-
-    return result
+    } else { return result }
   }
 
   _performLoginRequest(data = {}) {
@@ -270,7 +269,7 @@ module.exports = class WyzeAPI {
       custom_string: ''
     }
 
-    if(this.logLevelllllllllllllll == "debug") this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`)
+    if(this.apiLogEnabled == true) this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`)
 
     const result = await this.request('app/v2/auto/run_action', data)
 
@@ -830,7 +829,7 @@ module.exports = class WyzeAPI {
   async cameraMotionOff(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",0)}
   
   async cameraSoundNotificationOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '1')}
-  async cameraSoundNotificationOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '0')}
+  async cameraSoundNotificationOff(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '0')}
 
   async cameraNotifications(deviceMac, deviceModel, value){await this.setProperty(deviceMac, deviceModel, 'P1', value)}
   async cameraNotificationsOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1','1')}
@@ -857,28 +856,95 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {number} value
    */
-  async lightPower(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P3", value)}
-  async lightTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "0")}
+  async lightPower(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, 'P3', value)}
+  async lightTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P3', '0')}
   async lightTurnOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "1")}
 
-  async setBrightness(deviceMac, deviceModel, value) { return await this.setProperty(deviceMac, deviceModel, "P1501", value)}
-  async setColorTemperature(deviceMac, deviceModel, value) { return await this.setProperty(deviceMac, deviceModel, "P1502", value)}
+  async setBrightness(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1501", value)}
+  async setColorTemperature(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1502", value)}
 
 
-  async lightMeshPower(deviceMac, deviceModel, value) { return await this.runActionList(deviceMac, deviceModel ,'P3' , value,'set_mesh_property')}
-  async lightMeshOn(deviceMac, deviceModel) { return await this.runActionList(deviceMac, deviceModel ,'P3' , '1','set_mesh_property')}
-  async lightMeshOff(deviceMac,deviceModel) { return await this.runActionList(deviceMac, deviceModel ,'P3' , '0','set_mesh_property')}
+  /**
+   * Turn Mesh Device on or off
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {boolean} value 
+   */
+  async lightMeshPower(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel ,'P3' , value,'set_mesh_property')}
 
-  async setMeshBrightness(deviceMac, deviceModel, value) { return await this.runActionList(deviceMac, deviceModel, "P1501", value, 'set_mesh_property')}
-  async setMeshColorTemperature(deviceMac, deviceModel, value) { return await this.runActionList(deviceMac, deviceModel, "P1502", value, 'set_mesh_property')}
-  async setMeshHue(deviceMac, deviceModel, value) { return await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property')}
-  async setMeshSaturation(deviceMac, deviceModel, value) { return await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property')}
+  /**
+   * Turn Mesh Device On
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   */
+  async lightMeshOn(deviceMac, deviceModel) { await this.runActionList(deviceMac, deviceModel ,'P3' , '1','set_mesh_property')}
 
-   // Wall Switch
+  /**
+   * Turn Mesh Device Off
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   */
+  async lightMeshOff(deviceMac,deviceModel) { await this.runActionList(deviceMac, deviceModel ,'P3' , '0','set_mesh_property')}
+
+  /**
+   * Set Mesh Brightness 0 - 100
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {number} value 
+   */
+  async setMeshBrightness(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1501", value, 'set_mesh_property')}
+
+  /**
+   * Set Color Temperature 2700 - 6500
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {number} value 
+   */
+  async setMeshColorTemperature(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1502", value, 'set_mesh_property')}
+
+  /**
+   * 
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {*} value 
+   */
+  async setMeshHue(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property')}
+
+  /**
+   * 
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {*} value 
+   */
+  async setMeshSaturation(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property')}
+
+  /**
+   * Turn wall switch on or off
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {boolean} value 
+   */
   async wallSwitchPower(deviceMac, deviceModel, value) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', value)}
-  async wallSwitchPowerOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', true)}
-  async wallSwitchPowerOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', false)}
 
+  /**
+   * Turn wall switch on
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   */
+  async wallSwitchPowerOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', true)}
+
+  /**
+   * Turn wall switch off
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   */
+  async wallSwitchPowerOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', false)}
+  /**
+   * 
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   * @param {boolean} value 
+   */
   async wallSwitchIot(deviceMac, deviceModel, value) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', value)}
   async wallSwitchIotOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', true)}
   async wallSwitchIotOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', false)}
@@ -886,6 +952,11 @@ module.exports = class WyzeAPI {
   async wallSwitchLedStateOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'led_state', true)}
   async wallSwitchLedStateOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'led_state', false)}
 
+    /**
+   * Wall Switch Turn Vacation Mode on
+   * @param {string} deviceMac 
+   * @param {string} deviceModel 
+   */
   async wallSwitchVacationModeOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 0)}
 
   /**
@@ -935,7 +1006,14 @@ module.exports = class WyzeAPI {
   rangeToFloat(value, min, max) { return (value - min) / (max - min) }
   floatToRange(value, min, max) { return Math.round((value * (max - min)) + min) }
   kelvinToMired(value) { return Math.round(1000000 / value) }
-  checkBrightnessValue(value) { if(value >= 1 || value <= 100) { return value } else return 1 } 
+  checkBrightnessValue(value) { if (value >= 1 || value <= 100) { return value } else return value } 
   checkColorTemp(color) { if (color >= 500) { return 500 } else { return color }}
   checkLowBattery(batteryVolts) {if(this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {return 1} else return 0}
+
+  fahrenheit2celsius(fahrenheit) { return ((fahrenheit) - 32.0) / 1.8 }
+  celsius2fahrenheit(celsius) { return ((celsius) * 1.8) + 32.0}
+
+  clamp(number, min, max) { return Math.max(min, Math.min(number, max))}
+
+  sleep (ms) { return new Promise(resolve => setTimeout(resolve, ms * 1000)) }
 }
