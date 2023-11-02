@@ -52,12 +52,12 @@ function olive_create_signature(payload, access_token) {
     let body
 
     if (typeof payload === "object") {
-    body = Object.keys(payload)
-        .sort()
-        .map(key => `${key}=${payload[key]}`)
-        .join("&")
+        body = Object.keys(payload)
+            .sort()
+            .map(key => `${key}=${payload[key]}`)
+            .join("&")
     } else {
-    body = payload
+        body = payload
     }
 
     const access_key = `${access_token}${constants.oliveSigningSecret}`
@@ -70,10 +70,10 @@ function ford_create_signature(url_path, request_method, payload) {
     let string_buf = request_method + url_path
 
     Object.keys(payload)
-    .sort()
-    .forEach(key => {
-        string_buf += `${key}=${payload[key]}&`
-    })
+        .sort()
+        .forEach(key => {
+            string_buf += `${key}=${payload[key]}&`
+        })
 
     string_buf = string_buf.slice(0, -1)
     string_buf += constants.fordAppSecret

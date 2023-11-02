@@ -9,7 +9,7 @@ const constants = require('./constants')
 const util = require('./util')
 
 module.exports = class WyzeAPI {
-  constructor (options, log) {
+  constructor(options, log) {
     this.log = log
     this.persistPath = options.persistPath
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false
@@ -51,14 +51,14 @@ module.exports = class WyzeAPI {
     this.refresh_token = ''
 
     this.dumpData = false // Set this to true to log the Wyze object data blob one time at startup.
-    
+
     // Token is good for 216,000 seconds (60 hours) but 48 hours seems like a reasonable refresh interval 172800
-    if (this.refreshTokenTimerEnabled === true){
+    if (this.refreshTokenTimerEnabled === true) {
       setInterval(this.refreshToken.bind(this), 172800)
     }
   }
 
-  getRequestData (data = {}) {
+  getRequestData(data = {}) {
     return {
       'access_token': this.access_token,
       'app_name': this.appName,
@@ -73,7 +73,7 @@ module.exports = class WyzeAPI {
     }
   }
 
-  async request (url, data = {}) {
+  async request(url, data = {}) {
     await this.maybeLogin()
 
     try {
@@ -98,7 +98,7 @@ module.exports = class WyzeAPI {
     }
   }
 
-  async _performRequest (url, data = {}, config = {}) {
+  async _performRequest(url, data = {}, config = {}) {
     config = {
       method: 'POST',
       url,
@@ -107,16 +107,16 @@ module.exports = class WyzeAPI {
       ...config
     }
 
-    if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
-    if(this.apiLogEnabled == true) this.log.debug(`Request config: ${JSON.stringify(config)}`)
+    if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
+    if (this.apiLogEnabled) this.log.debug(`Request config: ${JSON.stringify(config)}`)
 
     let result
 
     try {
       result = await axios(config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
       if (this.dumpData) {
-        if(this.apiLogEnabled == true) this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
+        if (this.apiLogEnabled) this.log.debug(`API response PerformRequest: ${JSON.stringify(result.data)}`)
         this.dumpData = false // Only want to do this once at start-up
       }
     } catch (e) {
@@ -128,8 +128,8 @@ module.exports = class WyzeAPI {
       throw e
     }
     if (result.data.msg) {
-      if (result.data.msg == "DeviceIsOffline" ) { return result} else
-      throw new Error(result.data.msg)
+      if (result.data.msg == "DeviceIsOffline") { return result } else
+        throw new Error(result.data.msg)
     } else { return result }
   }
 
@@ -154,7 +154,7 @@ module.exports = class WyzeAPI {
     return this._performRequest(url, data, config)
   }
 
-  async login () {
+  async login() {
     let result = await this._performLoginRequest()
 
     // Do we need to perform a 2-factor login?
@@ -174,10 +174,10 @@ module.exports = class WyzeAPI {
 
     await this._updateTokens(result.data)
 
-    if(this.apiLogEnabled == true) this.log.debug('Successfully logged into Wyze API')
+    if (this.apiLogEnabled) this.log.debug('Successfully logged into Wyze API')
   }
 
-  async maybeLogin () {
+  async maybeLogin() {
     if (!this.access_token) {
       await this._loadPersistedTokens()
     }
@@ -187,7 +187,7 @@ module.exports = class WyzeAPI {
     }
   }
 
-  async refreshToken () {
+  async refreshToken() {
     const data = {
       ...this.getRequestData(),
       refresh_token: this.refresh_token
@@ -198,19 +198,19 @@ module.exports = class WyzeAPI {
     await this._updateTokens(result.data.data)
   }
 
-  async _updateTokens ({ access_token, refresh_token }) {
+  async _updateTokens({ access_token, refresh_token }) {
     this.access_token = access_token
     this.refresh_token = refresh_token
     await this._persistTokens()
   }
 
-  _tokenPersistPath () {
-   // const uuid = 'test'
+  _tokenPersistPath() {
+    // const uuid = 'test'
     const uuid = getUuid(this.username)
     return path.join(this.persistPath, `wyze-${uuid}.json`)
   }
 
-  async _persistTokens () {
+  async _persistTokens() {
     const data = {
       access_token: this.access_token,
       refresh_token: this.refresh_token
@@ -219,7 +219,7 @@ module.exports = class WyzeAPI {
     await fs.writeFile(this._tokenPersistPath(), JSON.stringify(data))
   }
 
-  async _loadPersistedTokens () {
+  async _loadPersistedTokens() {
     try {
       let data = await fs.readFile(this._tokenPersistPath())
       data = JSON.parse(data)
@@ -230,13 +230,13 @@ module.exports = class WyzeAPI {
     }
   }
 
-  async getObjectList () {
+  async getObjectList() {
     const result = await this.request('app/v2/home_page/get_object_list')
 
     return result.data
   }
 
-  async getPropertyList (deviceMac, deviceModel) {
+  async getPropertyList(deviceMac, deviceModel) {
     const data = {
       device_mac: deviceMac,
       device_model: deviceModel
@@ -247,7 +247,7 @@ module.exports = class WyzeAPI {
     return result.data
   }
 
-  async setProperty (deviceMac, deviceModel, propertyId, propertyValue) {
+  async setProperty(deviceMac, deviceModel, propertyId, propertyValue) {
     const data = {
       device_mac: deviceMac,
       device_model: deviceModel,
@@ -259,7 +259,7 @@ module.exports = class WyzeAPI {
     return result.data
   }
 
-  async runAction (deviceMac, deviceModel, actionKey) {
+  async runAction(deviceMac, deviceModel, actionKey) {
 
     const data = {
       instance_id: deviceMac,
@@ -269,14 +269,14 @@ module.exports = class WyzeAPI {
       custom_string: ''
     }
 
-    if(this.apiLogEnabled == true) this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`)
+    if (this.apiLogEnabled) this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`)
 
     const result = await this.request('app/v2/auto/run_action', data)
 
     return result.data
   }
 
-  async runActionList (deviceMac, deviceModel, propertyId, propertyValue, actionKey) {
+  async runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey) {
     const plist = [
       {
         pid: propertyId,
@@ -309,35 +309,35 @@ module.exports = class WyzeAPI {
     const data = {
       action_list: actionList
     }
-    if(this.apiLogEnabled == true) this.log.debug(`run_action_list Data Body: ${JSON.stringify(data)}`)
+    if (this.apiLogEnabled) this.log.debug(`run_action_list Data Body: ${JSON.stringify(data)}`)
 
     const result = await this.request('app/v2/auto/run_action_list', data)
 
     return result.data
   }
 
-  async controlLock (deviceMac, deviceModel, action) {
+  async controlLock(deviceMac, deviceModel, action) {
     await this.maybeLogin()
-    var path = '/openapi/lock/v1/control'
-    
-    var payload = {
+    let path = '/openapi/lock/v1/control'
+
+    let payload = {
       "uuid": this.getUuid(deviceMac, deviceModel),
       "action": action  // "remoteLock" or "remoteUnlock"
-  }
+    }
 
     let result
 
     try {
       payload = payloadFactory.fordCreatePayload(this.access_token, payload, path, "post")
 
-      var urlPath = 'https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control'
+      let urlPath = 'https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control'
       result = await axios.post(urlPath, payload)
-      if(this.apiLogEnabled == true) this.log(`API response ControLock: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log(`API response ControLock: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log(`Response ControLock (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log(`Response ControLock (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -353,20 +353,20 @@ module.exports = class WyzeAPI {
     let payload = {
       "uuid": this.getUuid(deviceMac, deviceModel),
       "with_keypad": '1'
-  }
-    try {      
+    }
+    try {
       let config = {
         params: payload
-      }  
+      }
       payload = payloadFactory.fordCreatePayload(this.access_token, payload, url_path, "get")
 
       const url = 'https://yd-saas-toc.wyzecam.com/openapi/lock/v1/info'
       result = await axios.get(url, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response GetLockInfo: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response GetLockInfo: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log(`Response GetLockInfo (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log(`Response GetLockInfo (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -378,7 +378,7 @@ module.exports = class WyzeAPI {
     await this.maybeLogin()
     let result
     let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
-    var signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
     let config = {
       headers: {
         'Accept-Encoding': 'gzip',
@@ -392,15 +392,15 @@ module.exports = class WyzeAPI {
       params: payload
     }
     try {
-      var url = 'https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop'
-      if(this.apiLogEnabled == true) this.log(`Performing request: ${url}`)
+      let url = 'https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop'
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`)
       result = await axios.get(url, config)
-      if(this.apiLogEnabled == true) this.log(`API response GetIotProp: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log(`API response GetIotProp: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log(`Response GetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log(`Response GetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -413,29 +413,29 @@ module.exports = class WyzeAPI {
     let payload = payloadFactory.oliveCreatePostPayload(deviceMac, product_model, propKey, value);
     let signature = crypto.oliveCreateSignatureSingle(JSON.stringify(payload), this.access_token);
 
-      const config = {
-        headers: {
-          'Accept-Encoding': 'gzip',
-          'Content-Type': 'application/json',
-          'User-Agent': 'myapp',
-          'appid': constants.oliveAppId,
-          'appinfo': constants.appInfo,
-          'phoneid': this.phoneId,
-          'access_token': this.access_token,
-          'signature2': signature
-        }
+    const config = {
+      headers: {
+        'Accept-Encoding': 'gzip',
+        'Content-Type': 'application/json',
+        'User-Agent': 'myapp',
+        'appid': constants.oliveAppId,
+        'appinfo': constants.appInfo,
+        'phoneid': this.phoneId,
+        'access_token': this.access_token,
+        'signature2': signature
       }
+    }
 
     try {
       const url = 'https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic'
       result = await axios.post(url, JSON.stringify(payload), config)
-      //if(this.apiLogEnabled == true) this.log(`API response SetIotProp: ${JSON.stringify(result.data)}`)
+      //if(this.apiLogEnabled) this.log(`API response SetIotProp: ${JSON.stringify(result.data)}`)
       console.result
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        //if(this.apiLogEnabled == true) this.log(`Response SetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        //if(this.apiLogEnabled) this.log(`Response SetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
         console.log(e.response)
       }
       throw e
@@ -446,6 +446,7 @@ module.exports = class WyzeAPI {
   async getUserProfile() {
     await this.maybeLogin()
 
+    let result
     let payload = payloadFactory.oliveCreateUserInfoPayload();
     let signature = crypto.oliveCreateSignature(payload, this.access_token);
 
@@ -463,15 +464,15 @@ module.exports = class WyzeAPI {
       params: payload
     }
     try {
-      var url = 'https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile';
-      if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
+      let url = 'https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile';
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
       result = await axios.get(url, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response GetUserProfile: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response GetUserProfile: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response GetUserProfile (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response GetUserProfile (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -493,13 +494,13 @@ module.exports = class WyzeAPI {
     }
     try {
       const url = 'https://hms.api.wyze.com/api/v1/reme-alarm';
-      if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
       result = await axios.delete(url, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response DisableRemeAlarm: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response DisableRemeAlarm: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response DisableRemeAlarm (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response DisableRemeAlarm (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -526,14 +527,14 @@ module.exports = class WyzeAPI {
 
     try {
       const url = 'https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user';
-      if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
       result = await axios.get(url, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response GetPlanBindingListByUser: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response GetPlanBindingListByUser: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response GetPlanBindingListByUser (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response GetPlanBindingListByUser (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -562,14 +563,14 @@ module.exports = class WyzeAPI {
 
     try {
       const url = 'https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status'
-      if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
       result = await axios.get(url, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response MonitoringProfileStateStatus: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response MonitoringProfileStateStatus: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response MonitoringProfileStateStatus (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response MonitoringProfileStateStatus (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -581,7 +582,7 @@ module.exports = class WyzeAPI {
     let result
     const payload = payloadFactory.oliveCreateHmsPatchPayload(hms_id);
     const signature = crypto.oliveCreateSignature(payload, this.access_token)
-    
+
     const config = {
       headers: {
         'User-Agent': this.userAgent,
@@ -590,32 +591,32 @@ module.exports = class WyzeAPI {
         'phoneid': constants.phoneId,
         'access_token': this.access_token,
         'signature2': signature,
-        'Authorization': this.access_token 
+        'Authorization': this.access_token
       },
       params: payload
     }
-    
-    const data =  [
-        {
-            "state": "home",
-            "active": home
-        },
-        {
-            "state": "away",
-            "active": away
-        }
-     ]
-    
+
+    const data = [
+      {
+        "state": "home",
+        "active": home
+      },
+      {
+        "state": "away",
+        "active": away
+      }
+    ]
+
     try {
       const url = "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active";
-      if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
       result = await axios.patch(url, data, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response MonitoringProfileActive: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response MonitoringProfileActive: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response MonitoringProfileActive (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response MonitoringProfileActive (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -642,21 +643,21 @@ module.exports = class WyzeAPI {
     }
     try {
       let url = 'https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop'
-      if(this.apiLogEnabled == true) this.log.debug(`Performing request: ${url}`)
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`)
       result = await axios.get(url, config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response ThermostatGetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response ThermostatGetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
     return result.data
   }
 
-  async thermostatSetIotProp(deviceMac,deviceModel, propKey, value) {
+  async thermostatSetIotProp(deviceMac, deviceModel, propKey, value) {
     await this.maybeLogin()
     let result
     let payload = payloadFactory.oliveCreatePostPayload(deviceMac, deviceModel, propKey, value);
@@ -673,16 +674,16 @@ module.exports = class WyzeAPI {
         'signature2': signature
       }
     }
-    
+
     try {
       const url = 'https://wyze-earth-service.wyzecam.com/plugin/earth/set_iot_prop_by_topic';
       result = await axios.post(url, JSON.stringify(payload), config)
-      if(this.apiLogEnabled == true) this.log.debug(`API response ThermostatSetIotProp: ${JSON.stringify(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response ThermostatSetIotProp: ${JSON.stringify(result.data)}`)
     } catch (e) {
       this.log.error(`Request failed: ${e}`)
 
       if (e.response) {
-        if(this.apiLogEnabled == true) this.log.debug(`Response ThermostatSetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
+        if (this.apiLogEnabled) this.log.debug(`Response ThermostatSetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
       }
       throw e
     }
@@ -694,31 +695,31 @@ module.exports = class WyzeAPI {
       mac: deviceMac.toUpperCase(),
       index: "1",
       ts: String(Math.floor(Date.now() / 1000000)),
-      plist : [
+      plist: [
         {
           pid: propertyId,
           pvalue: String(propertyValue)
         }
       ]
     }
-  
+
     const characteristics_str = JSON.stringify(characteristics)
     const characteristics_enc = util.encrypt(deviceEnr, characteristics_str)
-  
+
     const payload = {
       request: "set_status",
       isSendQueue: 0,
       characteristics: characteristics_enc
     }
     const payload_str = JSON.stringify(payload)
-  
+
     const url = `http://${deviceIp}:88/device_request`
 
-  
+
     try {
       //const response = await fetch(url, { method: "POST",body: payload_str})
       let result = await axios.post(url, payload_str)
-      if(this.apiLogEnabled == true) this.log.debug(`API response Local Bulb: ${(result.data)}`)
+      if (this.apiLogEnabled) this.log.debug(`API response Local Bulb: ${(result.data)}`)
 
     } catch (error) {
       console.log(error)
@@ -729,14 +730,14 @@ module.exports = class WyzeAPI {
       //await this.runActionList(bulb, plist)
     }
   }
-  
+
   /**
   * Helper functions
   */
 
-  getUuid (deviceMac, deviceModel) { return deviceMac.replace(`${deviceModel}.`, '')}
+  getUuid(deviceMac, deviceModel) { return deviceMac.replace(`${deviceModel}.`, '') }
 
-  async getObjects(){
+  async getObjects() {
     const result = await this.getObjectList()
     return result
   }
@@ -779,65 +780,65 @@ module.exports = class WyzeAPI {
     const result = await this.getObjectList()
     return result.data.device_sort_list
   }
-  async getDeviceStatus(device) { return device.device_params}
-  
-  async getDevicePID(deviceMac, deviceModel)  { return await this.getPropertyList(deviceMac,deviceModel)}
-  
-  async cameraPrivacy(deviceMac, deviceModel, value) { await this.runAction(deviceMac, deviceModel, value)}
-  async cameraTurnOn(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'power_on')}
-  async cameraTurnOff(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'power_off')}
+  async getDeviceStatus(device) { return device.device_params }
+
+  async getDevicePID(deviceMac, deviceModel) { return await this.getPropertyList(deviceMac, deviceModel) }
+
+  async cameraPrivacy(deviceMac, deviceModel, value) { await this.runAction(deviceMac, deviceModel, value) }
+  async cameraTurnOn(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'power_on') }
+  async cameraTurnOff(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'power_off') }
 
   /**
    * Open or Close Garage Door Depending on current state
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async garageDoor(deviceMac,deviceModel) { await this.runAction(deviceMac, deviceModel, 'garage_door_trigger')}
+  async garageDoor(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'garage_door_trigger') }
 
-  async cameraSiren(deviceMac, deviceModel, value) { await this.runAction(deviceMac, deviceModel, value)}
+  async cameraSiren(deviceMac, deviceModel, value) { await this.runAction(deviceMac, deviceModel, value) }
   /**
    * Turn Camera Siren ON
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async cameraSirenOn(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'siren_on')}
+  async cameraSirenOn(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'siren_on') }
 
   /**
    * Turn Camera Siren OFF
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async cameraSirenOff(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'siren_off')}
+  async cameraSirenOff(deviceMac, deviceModel) { await this.runAction(deviceMac, deviceModel, 'siren_off') }
 
-  async turnMeshOn(deviceMac, deviceModel) { return await this.runActionList(deviceMac, deviceModel ,'P3' , '1','set_mesh_property')}
-  async turnMeshOff(deviceMac,deviceModel) { return await this.runActionList(deviceMac, deviceModel ,'P3' , '0','set_mesh_property')}
+  async turnMeshOn(deviceMac, deviceModel) { return await this.runActionList(deviceMac, deviceModel, 'P3', '1', 'set_mesh_property') }
+  async turnMeshOff(deviceMac, deviceModel) { return await this.runActionList(deviceMac, deviceModel, 'P3', '0', 'set_mesh_property') }
 
-  async unlockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteUnlock')}
-  async lockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteLock')}
+  async unlockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteUnlock') }
+  async lockLock(device) { return await this.controlLock(device.mac, device.product_model, 'remoteLock') }
 
-  async lockInfo(device) { return await this.getLockInfo(device.mac, device.product_model)}
+  async lockInfo(device) { return await this.getLockInfo(device.mac, device.product_model) }
 
-  async cameraFloodLight(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1056", value)}
-  async cameraFloodLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "1")}
-  async cameraFloodLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "2")}
+  async cameraFloodLight(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1056", value) }
+  async cameraFloodLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "1") }
+  async cameraFloodLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "2") }
 
-  async cameraSpotLight(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1056", value)}
-  async cameraSpotLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "1")}
-  async cameraSpotLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "2")}
+  async cameraSpotLight(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1056", value) }
+  async cameraSpotLightOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "1") }
+  async cameraSpotLightOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1056", "2") }
 
-  async cameraMotionOn(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",1)}
-  async cameraMotionOff(deviceMac, deviceModel) {await this.setProperty(deviceMac, deviceModel, "P1001",0)}
-  
-  async cameraSoundNotificationOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '1')}
-  async cameraSoundNotificationOff(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, "P1048", '0')}
+  async cameraMotionOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1001", 1) }
+  async cameraMotionOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1001", 0) }
 
-  async cameraNotifications(deviceMac, deviceModel, value){await this.setProperty(deviceMac, deviceModel, 'P1', value)}
-  async cameraNotificationsOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1','1')}
-  async cameraNotificationsOff(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1','0')}
+  async cameraSoundNotificationOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1048", '1') }
+  async cameraSoundNotificationOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P1048", '0') }
 
-  async cameraMotionRecording(deviceMac, deviceModel, value){await this.setProperty(deviceMac, deviceModel, 'P1047', value)}
-  async cameraMotionRecordingOn(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1047','1')}
-  async cameraMotionRecordingOff(deviceMac, deviceModel){await this.setProperty(deviceMac, deviceModel, 'P1047','0')}
+  async cameraNotifications(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, 'P1', value) }
+  async cameraNotificationsOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P1', '1') }
+  async cameraNotificationsOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P1', '0') }
+
+  async cameraMotionRecording(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, 'P1047', value) }
+  async cameraMotionRecordingOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P1047', '1') }
+  async cameraMotionRecordingOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P1047', '0') }
 
   /**
    * Turn Plug 0 = off or 1 = on
@@ -845,9 +846,9 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {number} value
    */
-  async plugPower(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P3", value)}
-  async plugTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "0")}
-  async plugTurnOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "1")}
+  async plugPower(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P3", value) }
+  async plugTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "0") }
+  async plugTurnOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "1") }
 
   //WyzeLight
   /**
@@ -856,12 +857,12 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {number} value
    */
-  async lightPower(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, 'P3', value)}
-  async lightTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P3', '0')}
-  async lightTurnOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "1")}
+  async lightPower(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, 'P3', value) }
+  async lightTurnOn(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, 'P3', '0') }
+  async lightTurnOff(deviceMac, deviceModel) { await this.setProperty(deviceMac, deviceModel, "P3", "1") }
 
-  async setBrightness(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1501", value)}
-  async setColorTemperature(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1502", value)}
+  async setBrightness(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1501", value) }
+  async setColorTemperature(deviceMac, deviceModel, value) { await this.setProperty(deviceMac, deviceModel, "P1502", value) }
 
 
   /**
@@ -870,21 +871,21 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {boolean} value 
    */
-  async lightMeshPower(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel ,'P3' , value,'set_mesh_property')}
+  async lightMeshPower(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, 'P3', value, 'set_mesh_property') }
 
   /**
    * Turn Mesh Device On
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async lightMeshOn(deviceMac, deviceModel) { await this.runActionList(deviceMac, deviceModel ,'P3' , '1','set_mesh_property')}
+  async lightMeshOn(deviceMac, deviceModel) { await this.runActionList(deviceMac, deviceModel, 'P3', '1', 'set_mesh_property') }
 
   /**
    * Turn Mesh Device Off
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async lightMeshOff(deviceMac,deviceModel) { await this.runActionList(deviceMac, deviceModel ,'P3' , '0','set_mesh_property')}
+  async lightMeshOff(deviceMac, deviceModel) { await this.runActionList(deviceMac, deviceModel, 'P3', '0', 'set_mesh_property') }
 
   /**
    * Set Mesh Brightness 0 - 100
@@ -892,7 +893,7 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {number} value 
    */
-  async setMeshBrightness(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1501", value, 'set_mesh_property')}
+  async setMeshBrightness(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1501", value, 'set_mesh_property') }
 
   /**
    * Set Color Temperature 2700 - 6500
@@ -900,7 +901,7 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {number} value 
    */
-  async setMeshColorTemperature(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1502", value, 'set_mesh_property')}
+  async setMeshColorTemperature(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1502", value, 'set_mesh_property') }
 
   /**
    * 
@@ -908,7 +909,7 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {*} value 
    */
-  async setMeshHue(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property')}
+  async setMeshHue(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property') }
 
   /**
    * 
@@ -916,7 +917,7 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {*} value 
    */
-  async setMeshSaturation(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property')}
+  async setMeshSaturation(deviceMac, deviceModel, value) { await this.runActionList(deviceMac, deviceModel, "P1507", value, 'set_mesh_property') }
 
   /**
    * Turn wall switch on or off
@@ -924,59 +925,59 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel 
    * @param {boolean} value 
    */
-  async wallSwitchPower(deviceMac, deviceModel, value) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', value)}
+  async wallSwitchPower(deviceMac, deviceModel, value) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', value) }
 
   /**
    * Turn wall switch on
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async wallSwitchPowerOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', true)}
+  async wallSwitchPowerOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', true) }
 
   /**
    * Turn wall switch off
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async wallSwitchPowerOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', false)}
+  async wallSwitchPowerOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-power', false) }
   /**
    * 
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    * @param {boolean} value 
    */
-  async wallSwitchIot(deviceMac, deviceModel, value) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', value)}
-  async wallSwitchIotOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', true)}
-  async wallSwitchIotOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', false)}
+  async wallSwitchIot(deviceMac, deviceModel, value) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', value) }
+  async wallSwitchIotOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', true) }
+  async wallSwitchIotOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'switch-iot', false) }
 
-  async wallSwitchLedStateOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'led_state', true)}
-  async wallSwitchLedStateOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'led_state', false)}
+  async wallSwitchLedStateOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'led_state', true) }
+  async wallSwitchLedStateOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'led_state', false) }
 
-    /**
-   * Wall Switch Turn Vacation Mode on
-   * @param {string} deviceMac 
-   * @param {string} deviceModel 
-   */
-  async wallSwitchVacationModeOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 0)}
+  /**
+ * Wall Switch Turn Vacation Mode on
+ * @param {string} deviceMac 
+ * @param {string} deviceModel 
+ */
+  async wallSwitchVacationModeOn(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 0) }
 
   /**
    * Wall Switch Turn Vacation Mode off
    * @param {string} deviceMac 
    * @param {string} deviceModel 
    */
-  async wallSwitchVacationModeOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 1)}
+  async wallSwitchVacationModeOff(deviceMac, deviceModel) { await this.setIotProp(deviceMac, deviceModel, 'vacation_mode', 1) }
 
   async getHmsID() { await this.getPlanBindingListByUser() }
 
   async setHMSState(hms_id, mode) {
-      if(mode == "off") {
-        await this.disableRemeAlarm(hms_id)
-        await this.monitoringProfileActive(hms_id, 0, 0)
-      } else if( mode === "away" ) {
-        await this.monitoringProfileActive(hms_id, 0, 1)
-      } else if( mode === "home" ) {
-        await this.monitoringProfileActive(hms_id, 1, 0)
-      }
+    if (mode == "off") {
+      await this.disableRemeAlarm(hms_id)
+      await this.monitoringProfileActive(hms_id, 0, 0)
+    } else if (mode === "away") {
+      await this.monitoringProfileActive(hms_id, 0, 1)
+    } else if (mode === "home") {
+      await this.monitoringProfileActive(hms_id, 1, 0)
+    }
   }
 
   async getHmsUpdate(hms_id) { return await this.plugin.client.monitoringProfileStateStatus(hms_id) }
@@ -989,31 +990,31 @@ module.exports = class WyzeAPI {
     return state
   }
 
-  async getDeviceStatePID(deviceMac, deviceModel, pid) { 
-   const prop =  await this.getDevicePID(deviceMac, deviceModel)
-   for (const property of prop.data.property_list) {
-      if( pid == property.pid) { 
+  async getDeviceStatePID(deviceMac, deviceModel, pid) {
+    const prop = await this.getDevicePID(deviceMac, deviceModel)
+    for (const property of prop.data.property_list) {
+      if (pid == property.pid) {
         return property.value !== undefined ? (property.value === '1' ? 1 : 0) : ''
       }
-   }
+    }
   }
 
 
-  getLockDoorState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState} }
-  getLeakSensorState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState} }
-  getLockState(deviceState) { if (deviceState == 2) { return 0 } else { return 1} }
-  checkBatteryVoltage(value) { if (value >= 100) { return 100 } else if ( value == "undefined" || value == null) { return 1 } else { return value }}
+  getLockDoorState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState } }
+  getLeakSensorState(deviceState) { if (deviceState >= 2) { return 1 } else { return deviceState } }
+  getLockState(deviceState) { if (deviceState == 2) { return 0 } else { return 1 } }
+  checkBatteryVoltage(value) { if (value >= 100) { return 100 } else if (value == "undefined" || value == null) { return 1 } else { return value } }
   rangeToFloat(value, min, max) { return (value - min) / (max - min) }
   floatToRange(value, min, max) { return Math.round((value * (max - min)) + min) }
   kelvinToMired(value) { return Math.round(1000000 / value) }
-  checkBrightnessValue(value) { if (value >= 1 || value <= 100) { return value } else return value } 
-  checkColorTemp(color) { if (color >= 500) { return 500 } else { return color }}
-  checkLowBattery(batteryVolts) {if(this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {return 1} else return 0}
+  checkBrightnessValue(value) { if (value >= 1 || value <= 100) { return value } else return value }
+  checkColorTemp(color) { if (color >= 500) { return 500 } else { return color } }
+  checkLowBattery(batteryVolts) { if (this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) { return 1 } else return 0 }
 
   fahrenheit2celsius(fahrenheit) { return ((fahrenheit) - 32.0) / 1.8 }
-  celsius2fahrenheit(celsius) { return ((celsius) * 1.8) + 32.0}
+  celsius2fahrenheit(celsius) { return ((celsius) * 1.8) + 32.0 }
 
-  clamp(number, min, max) { return Math.max(min, Math.min(number, max))}
+  clamp(number, min, max) { return Math.max(min, Math.min(number, max)) }
 
-  sleep (ms) { return new Promise(resolve => setTimeout(resolve, ms * 1000)) }
+  sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms * 1000)) }
 }
