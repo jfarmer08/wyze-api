@@ -128,7 +128,7 @@ module.exports = class WyzeAPI {
       throw e
     }
     if (result.data.msg) {
-      if (result.data.msg == "DeviceIsOffline") { return result } else
+      if (result.data.msg == "DeviceIsOffline" || result.data.msg != "SUCCESS") { return result } else
         throw new Error(result.data.msg)
     } else { return result }
   }
