@@ -14,8 +14,7 @@ module.exports = Object.freeze({
   sc: "wyze_developer_api",
   sv: "wyze_developer_api",
   authApiKey: "WMXHYf79Nr5gIlt3r0r7p9Tcw5bvs6BB4U8O8nGJ",
-  userAgent:
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1 Safari/605.1.15",
+  userAgent: "unofficial-wyze-api/1.0",
 
   //URLs
   authBaseUrl: "https://auth-prod.api.wyze.com",
