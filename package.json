@@ -29,7 +29,8 @@
     "colorsys": "^1.0.22",
     "base64-js": "1.5.1",
     "querystring": "0.2.1",
-    "uuid-by-string": "4.0.0"
+    "uuid-by-string": "4.0.0",
+    "@ptkdev/logger": "1.8.0"
   },
   "funding": [
     {
