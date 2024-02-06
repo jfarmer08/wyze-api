@@ -22,6 +22,6 @@
   "dependencies": {
     "axios": "^0.27.2",
     "@ptkdev/logger": "1.8.0",
-    "wyze-api": "1.1.0"
+    "wyze-api": "^1.1.1"
   }
 }

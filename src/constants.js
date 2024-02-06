@@ -1,3 +1,5 @@
+const packageVersion = require('../package.json').version
+
 module.exports = Object.freeze({
   // Crypto Secrets
   fordAppKey: "275965684684dbdaf29a0ed9", // Required for Locks
@@ -14,7 +16,7 @@ module.exports = Object.freeze({
   sc: "wyze_developer_api",
   sv: "wyze_developer_api",
   authApiKey: "WMXHYf79Nr5gIlt3r0r7p9Tcw5bvs6BB4U8O8nGJ",
-  userAgent: "unofficial-wyze-api/1.0",
+  userAgent: "unofficial-wyze-api/" + packageVersion,
 
   //URLs
   authBaseUrl: "https://auth-prod.api.wyze.com",
