@@ -201,7 +201,7 @@ module.exports = class WyzeAPI {
   }
 
   async maybeLogin() {
-    if (!this.access_token) {
+    if (false && !this.access_token) {
       await this._loadPersistedTokens();
     }
 
@@ -226,7 +226,7 @@ module.exports = class WyzeAPI {
         var waitTime = 0;
         while (waitTime < this.loginAttemptDebounceMilliseconds) {
           await this.sleep(2);
-          waitTime = waitTime + 5000;
+          waitTime = waitTime + 2000;
           if (this.access_token) {
             break;
           }
