@@ -36,5 +36,5 @@ async function deviceListCheck() {
 
 (async () => {
   // await deviceListCheck();
-  await loginCheck();
+  // await loginCheck();
 })()
