@@ -3,10 +3,11 @@ const fs = require("fs").promises;
 const path = require("path");
 const getUuid = require("uuid-by-string");
 
-const payloadFactory = require("./payloadFactory");
-const crypto = require("./crypto");
-const constants = require("./constants");
-const util = require("./util");
+const payloadFactory = require('./payloadFactory');
+const crypto = require('./crypto');
+const constants = require('./constants');
+const util = require('./util');
+const { time } = require('console');
 
 module.exports = class WyzeAPI {
   constructor(options, log) {
@@ -53,6 +54,9 @@ module.exports = class WyzeAPI {
     this.refresh_token = "";
 
     this.dumpData = false; // Set this to true to log the Wyze object data blob one time at startup.
+
+    this.lastLoginAttempt = 0;
+    this.loginAttemptDebounceMilliseconds = 1000;
 
     // Token is good for 216,000 seconds (60 hours) but 48 hours seems like a reasonable refresh interval 172800
     if (this.refreshTokenTimerEnabled === true) {
@@ -202,7 +206,38 @@ module.exports = class WyzeAPI {
     }
 
     if (!this.access_token) {
-      await this.login();
+      let now = new Date().getTime();
+      // check if the last login attempt occurred too recently
+      if (this.apiLogEnabled) this.log.debug("Last login " + this.lastLoginAttempt + " debounce " + this.loginAttemptDebounceMilliseconds + " now " + now);
+      if (this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds < now) {
+        // reset loginAttemptDebounceMilliseconds if last attempted login occurred more than 12 hours ago
+        if (this.lastLoginAttempt - now > 60 * 1000 * 60 * 12) {
+          this.loginAttemptDebounceMilliseconds = 1000;
+        } else {
+          // max debounce of 5 minutes
+          this.loginAttemptDebounceMilliseconds = Math.min(this.loginAttemptDebounceMilliseconds * 2, 1000 * 60 * 5);
+        }
+
+        this.lastLoginAttempt = now;
+        await this.login();
+      } else {
+        this.log.warning("Attempting to login before debounce has cleared, waiting " + this.loginAttemptDebounceMilliseconds / 1000 + " seconds");
+
+        var waitTime = 0;
+        while (waitTime < this.loginAttemptDebounceMilliseconds) {
+          await this.sleep(2);
+          waitTime = waitTime + 2000;
+          if (this.access_token) {
+            break;
+          }
+        }
+
+        if (!this.access_token) {
+          this.lastLoginAttempt = now;
+          this.loginAttemptDebounceMilliseconds = Math.min(this.loginAttemptDebounceMilliseconds * 2, 1000 * 60 * 5);
+          await this.login();
+        }
+      }
     }
   }
 
@@ -1416,7 +1451,7 @@ module.exports = class WyzeAPI {
     return Math.max(min, Math.min(number, max));
   }
 
-  sleep(ms) {
-    return new Promise((resolve) => setTimeout(resolve, ms * 1000));
+  sleep(seconds) {
+    return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   }
 };
