@@ -3,3 +3,4 @@ node_modules/*
 example/node_modules/*
 example/scratch/*
 .env
+example/.env
