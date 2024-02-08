@@ -201,7 +201,7 @@ module.exports = class WyzeAPI {
   }
 
   async maybeLogin() {
-    if (false && !this.access_token) {
+    if (!this.access_token) {
       await this._loadPersistedTokens();
     }
 
