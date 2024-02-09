@@ -2,6 +2,10 @@
 
 ## Releases
 
+### v1.1.3
+- Clean Login api
+- Add debounce for login api
+
 ### v1.1.2
 - Change user aganet based on package version
 
