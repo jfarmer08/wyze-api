@@ -188,7 +188,7 @@ module.exports = class WyzeAPI {
         await this._updateTokens(result.data);
       } catch (error) {
         throw new Error(
-          "Invalid credentials, please check username, password, keyid or apikey"
+          "Invalid credentials, please check username, password, keyid or apikey" + error
         );
       }
     }
