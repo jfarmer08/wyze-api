@@ -144,8 +144,8 @@ module.exports = class WyzeAPI {
 
       throw e;
     }
-    this.log.debug(result.data.msg)
-    return result
+    this.log.debug(result.data.msg);
+    return result;
   }
 
   _performLoginRequest(data = {}) {
@@ -181,18 +181,15 @@ module.exports = class WyzeAPI {
         'KeyId Required, Please provide the "keyid" parameter in config.json'
       );
     } else {
-      result = await this._performLoginRequest();
-      if (
-        result.data.description ==
-        "Invalid credentials, please check username, password, keyid or apikey"
-      ) {
-        throw new Error(
-          "Invalid credentials, please check username, password, keyid or apikey"
-        );
-      } else {
+      try {
+        result = await this._performLoginRequest();
         if (this.apiLogEnabled)
           this.log.debug("Successfully logged into Wyze API");
         await this._updateTokens(result.data);
+      } catch (error) {
+        throw new Error(
+          "Invalid credentials, please check username, password, keyid or apikey"
+        );
       }
     }
   }
