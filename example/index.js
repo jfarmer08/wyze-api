@@ -1,3 +1,5 @@
+require('dotenv').config()
+
 let WyzeAPI = null;
 if (process.env.LOCAL_DEV) {
   WyzeAPI = require('../src/index'); // Local Debug
@@ -35,6 +37,6 @@ async function deviceListCheck() {
 
 
 (async () => {
-  // await deviceListCheck();
+   await deviceListCheck();
   // await loginCheck(4);
 })()

@@ -3,11 +3,11 @@ const fs = require("fs").promises;
 const path = require("path");
 const getUuid = require("uuid-by-string");
 
-const payloadFactory = require('./payloadFactory');
-const crypto = require('./crypto');
-const constants = require('./constants');
-const util = require('./util');
-const { time } = require('console');
+const payloadFactory = require("./payloadFactory");
+const crypto = require("./crypto");
+const constants = require("./constants");
+const util = require("./util");
+const { time } = require("console");
 
 module.exports = class WyzeAPI {
   constructor(options, log) {
@@ -144,14 +144,12 @@ module.exports = class WyzeAPI {
 
       throw e;
     }
-    if (result.data.msg) {
-      if (result.data.msg == "DeviceIsOffline" || result.data.msg == "SUCCESS") { return result } else
-        throw new Error(result.data.msg)
-    } else { return result }
+    this.log.debug(result.data.msg);
+    return result;
   }
 
   _performLoginRequest(data = {}) {
-    let url = "user/login";
+    let url = "api/user/login";
     data = {
       email: this.username,
       password: util.createPassword(this.password),
@@ -160,44 +158,40 @@ module.exports = class WyzeAPI {
 
     const config = {
       baseURL: this.authBaseUrl,
-      headers: { "x-api-key": this.authApiKey, "User-Agent": this.userAgent },
-    };
-
-    if (this.apiKey && this.keyId) {
-      url = "api/user/login";
-      config.headers = {
+      headers: {
+        "x-api-key": this.authApiKey,
         apikey: this.apiKey,
         keyid: this.keyId,
         "User-Agent": this.userAgent,
-      };
-    }
+      },
+    };
 
     return this._performRequest(url, data, config);
   }
 
   async login() {
-    let result = await this._performLoginRequest();
-
-    // Do we need to perform a 2-factor login?
-    if (!result.data.access_token && result.data.mfa_details) {
-      if (!this.mfaCode) {
+    let result;
+    // Do we need apiKey or keyId?
+    if (this.apiKey == null) {
+      throw new Error(
+        'ApiKey Required, Please provide the "apiKey" parameter in config.json'
+      );
+    } else if (this.keyId == null) {
+      throw new Error(
+        'KeyId Required, Please provide the "keyid" parameter in config.json'
+      );
+    } else {
+      try {
+        result = await this._performLoginRequest();
+        if (this.apiLogEnabled)
+          this.log.debug("Successfully logged into Wyze API");
+        await this._updateTokens(result.data);
+      } catch (error) {
         throw new Error(
-          'Your account has 2-factor auth enabled. Please provide the "mfaCode" parameter in config.json.'
+          "Invalid credentials, please check username, password, keyid or apikey" + error
         );
       }
-
-      const data = {
-        mfa_type: "TotpVerificationCode",
-        verification_id: result.data.mfa_details.totp_apps[0].app_id,
-        verification_code: this.mfaCode,
-      };
-
-      result = await this._performLoginRequest(data);
     }
-
-    await this._updateTokens(result.data);
-
-    if (this.apiLogEnabled) this.log.debug("Successfully logged into Wyze API");
   }
 
   async maybeLogin() {
@@ -208,20 +202,35 @@ module.exports = class WyzeAPI {
     if (!this.access_token) {
       let now = new Date().getTime();
       // check if the last login attempt occurred too recently
-      if (this.apiLogEnabled) this.log.debug("Last login " + this.lastLoginAttempt + " debounce " + this.loginAttemptDebounceMilliseconds + " now " + now);
+      if (this.apiLogEnabled)
+        this.log.debug(
+          "Last login " +
+            this.lastLoginAttempt +
+            " debounce " +
+            this.loginAttemptDebounceMilliseconds +
+            " now " +
+            now
+        );
       if (this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds < now) {
         // reset loginAttemptDebounceMilliseconds if last attempted login occurred more than 12 hours ago
         if (this.lastLoginAttempt - now > 60 * 1000 * 60 * 12) {
           this.loginAttemptDebounceMilliseconds = 1000;
         } else {
           // max debounce of 5 minutes
-          this.loginAttemptDebounceMilliseconds = Math.min(this.loginAttemptDebounceMilliseconds * 2, 1000 * 60 * 5);
+          this.loginAttemptDebounceMilliseconds = Math.min(
+            this.loginAttemptDebounceMilliseconds * 2,
+            1000 * 60 * 5
+          );
         }
 
         this.lastLoginAttempt = now;
         await this.login();
       } else {
-        this.log.warning("Attempting to login before debounce has cleared, waiting " + this.loginAttemptDebounceMilliseconds / 1000 + " seconds");
+        this.log.warning(
+          "Attempting to login before debounce has cleared, waiting " +
+            this.loginAttemptDebounceMilliseconds / 1000 +
+            " seconds"
+        );
 
         var waitTime = 0;
         while (waitTime < this.loginAttemptDebounceMilliseconds) {
@@ -234,7 +243,10 @@ module.exports = class WyzeAPI {
 
         if (!this.access_token) {
           this.lastLoginAttempt = now;
-          this.loginAttemptDebounceMilliseconds = Math.min(this.loginAttemptDebounceMilliseconds * 2, 1000 * 60 * 5);
+          this.loginAttemptDebounceMilliseconds = Math.min(
+            this.loginAttemptDebounceMilliseconds * 2,
+            1000 * 60 * 5
+          );
           await this.login();
         }
       }
