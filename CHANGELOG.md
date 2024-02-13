@@ -2,6 +2,9 @@
 
 ## Releases
 
+### v1.1.5
+- Adds check if code is not in the message
+
 ### v1.1.4
 - Adds a check, log message, and refresh atttempt if the code of the response does not equal 1
 
