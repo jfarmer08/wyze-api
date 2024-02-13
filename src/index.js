@@ -144,7 +144,11 @@ module.exports = class WyzeAPI {
 
       throw e;
     }
-    this.log.debug(result.data.msg);
+
+    if (result.data.code != 1) {
+      this.log.debug(`Potentially recoverable error during request, '${result.data.msg}'`)
+      throw new Error("Potentially recoverable error during request");
+    }
     return result;
   }
 
