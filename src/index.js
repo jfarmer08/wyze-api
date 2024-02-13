@@ -8,7 +8,6 @@ const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
 const { time } = require("console");
-const { rmSync } = require("fs");
 
 module.exports = class WyzeAPI {
   constructor(options, log) {
