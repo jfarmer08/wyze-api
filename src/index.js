@@ -8,6 +8,7 @@ const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
 const { time } = require("console");
+const { rmSync } = require("fs");
 
 module.exports = class WyzeAPI {
   constructor(options, log) {
@@ -144,7 +145,11 @@ module.exports = class WyzeAPI {
 
       throw e;
     }
-    this.log.debug(result.data.msg);
+    // this.log.debug(result.data.msg);
+    if (result.data.code != 1) {
+      this.log.error(`Error during request, '${result.data.msg}'`)
+      throw new Error("Error during request");
+    }
     return result;
   }
 
