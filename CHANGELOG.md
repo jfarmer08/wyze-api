@@ -3,7 +3,7 @@
 ## Releases
 
 ### v1.1.4
-- Adds a check, log message, and refresh atttempt if the code of the response does not equal 1
+- Adds a check, log message, and refresh atttempt if the code of the response does not equal 1.
 
 ### v1.1.3
 - Clean Login api
