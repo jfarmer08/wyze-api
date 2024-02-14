@@ -185,7 +185,7 @@ module.exports = class WyzeAPI {
           `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
         );
         await new Promise((resolve) => setTimeout(resolve, resetsIn));
-      } else if (rateLimitRemaining > 0 && this.apiLogEnabled) {
+      } else if (rateLimitRemaining && this.apiLogEnabled) {
         this.log.debug(
           `API rate limit remaining: ${rateLimitRemaining}. Expires in ${
             (rateLimitResetBy || new Date()).getTime() - new Date().getTime()
@@ -333,8 +333,11 @@ module.exports = class WyzeAPI {
       const result = await this._performLoginRequest();
       if (!result.ok || !result.data.access_token) {
         throw new Error(
+          `Invalid credentials, please check username/password, keyId/apiKey - ${JSON.stringify(
             result
-          )}
+          )}`
+        );
+      }
       if (this.apiLogEnabled) {
         this.log.debug("Successfully logged into Wyze API");
       }
@@ -424,7 +427,6 @@ module.exports = class WyzeAPI {
   }
 
   _tokenPersistPath() {
-    // const uuid = 'test'
     const uuid = getUuid(this.username);
     return path.join(this.persistPath, `wyze-${uuid}.json`);
   }
