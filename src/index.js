@@ -334,8 +334,7 @@ module.exports = class WyzeAPI {
       if (!result.ok || !result.data.access_token) {
         throw new Error(
             result
-          )}`
-        );
+          )}
       }
 
       if (this.apiLogEnabled) {
@@ -343,7 +342,6 @@ module.exports = class WyzeAPI {
       }
       await this._updateTokens(result.data);
     }
-  }
 
   async maybeLogin() {
     if (!this.access_token) {
