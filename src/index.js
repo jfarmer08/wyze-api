@@ -335,13 +335,12 @@ module.exports = class WyzeAPI {
         throw new Error(
             result
           )}
-      }
-
       if (this.apiLogEnabled) {
         this.log.debug("Successfully logged into Wyze API");
       }
       await this._updateTokens(result.data);
     }
+  }
 
   async maybeLogin() {
     if (!this.access_token) {
@@ -1036,6 +1035,7 @@ module.exports = class WyzeAPI {
     }
   }
 
+  //Still needs work. Unable to get the Encrypt correct
   async localBulbCommand(
     deviceMac,
     deviceEnr,
@@ -1139,6 +1139,7 @@ module.exports = class WyzeAPI {
     const result = await this.getObjectList();
     return result.data.device_sort_list;
   }
+
   async getDeviceStatus(device) {
     return device.device_params;
   }
@@ -1150,9 +1151,11 @@ module.exports = class WyzeAPI {
   async cameraPrivacy(deviceMac, deviceModel, value) {
     await this.runAction(deviceMac, deviceModel, value);
   }
+
   async cameraTurnOn(deviceMac, deviceModel) {
     await this.runAction(deviceMac, deviceModel, "power_on");
   }
+
   async cameraTurnOff(deviceMac, deviceModel) {
     await this.runAction(deviceMac, deviceModel, "power_off");
   }
@@ -1169,6 +1172,7 @@ module.exports = class WyzeAPI {
   async cameraSiren(deviceMac, deviceModel, value) {
     await this.runAction(deviceMac, deviceModel, value);
   }
+
   /**
    * Turn Camera Siren ON
    * @param {string} deviceMac
@@ -1196,6 +1200,7 @@ module.exports = class WyzeAPI {
       "set_mesh_property"
     );
   }
+
   async turnMeshOff(deviceMac, deviceModel) {
     return await this.runActionList(
       deviceMac,
@@ -1213,6 +1218,7 @@ module.exports = class WyzeAPI {
       "remoteUnlock"
     );
   }
+
   async lockLock(device) {
     return await this.controlLock(
       device.mac,
@@ -1228,9 +1234,11 @@ module.exports = class WyzeAPI {
   async cameraFloodLight(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1056", value);
   }
+
   async cameraFloodLightOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "1");
   }
+
   async cameraFloodLightOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "2");
   }
@@ -1238,9 +1246,11 @@ module.exports = class WyzeAPI {
   async cameraSpotLight(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1056", value);
   }
+
   async cameraSpotLightOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "1");
   }
+
   async cameraSpotLightOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "2");
   }
@@ -1248,6 +1258,7 @@ module.exports = class WyzeAPI {
   async cameraMotionOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1001", 1);
   }
+
   async cameraMotionOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1001", 0);
   }
@@ -1255,6 +1266,7 @@ module.exports = class WyzeAPI {
   async cameraSoundNotificationOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1048", "1");
   }
+
   async cameraSoundNotificationOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1048", "0");
   }
@@ -1262,9 +1274,11 @@ module.exports = class WyzeAPI {
   async cameraNotifications(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1", value);
   }
+
   async cameraNotificationsOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1", "1");
   }
+
   async cameraNotificationsOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1", "0");
   }
@@ -1272,9 +1286,11 @@ module.exports = class WyzeAPI {
   async cameraMotionRecording(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1047", value);
   }
+
   async cameraMotionRecordingOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1047", "1");
   }
+
   async cameraMotionRecordingOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1047", "0");
   }
@@ -1288,9 +1304,11 @@ module.exports = class WyzeAPI {
   async plugPower(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P3", value);
   }
+
   async plugTurnOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P3", "0");
   }
+
   async plugTurnOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P3", "1");
   }
@@ -1305,9 +1323,11 @@ module.exports = class WyzeAPI {
   async lightPower(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P3", value);
   }
+
   async lightTurnOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P3", "0");
   }
+
   async lightTurnOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P3", "1");
   }
@@ -1315,6 +1335,7 @@ module.exports = class WyzeAPI {
   async setBrightness(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1501", value);
   }
+
   async setColorTemperature(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1502", value);
   }
@@ -1465,9 +1486,11 @@ module.exports = class WyzeAPI {
   async wallSwitchIot(deviceMac, deviceModel, value) {
     await this.setIotProp(deviceMac, deviceModel, "switch-iot", value);
   }
+
   async wallSwitchIotOn(deviceMac, deviceModel) {
     await this.setIotProp(deviceMac, deviceModel, "switch-iot", true);
   }
+
   async wallSwitchIotOff(deviceMac, deviceModel) {
     await this.setIotProp(deviceMac, deviceModel, "switch-iot", false);
   }
@@ -1475,6 +1498,7 @@ module.exports = class WyzeAPI {
   async wallSwitchLedStateOn(deviceMac, deviceModel) {
     await this.setIotProp(deviceMac, deviceModel, "led_state", true);
   }
+
   async wallSwitchLedStateOff(deviceMac, deviceModel) {
     await this.setIotProp(deviceMac, deviceModel, "led_state", false);
   }
@@ -1554,6 +1578,7 @@ module.exports = class WyzeAPI {
       return deviceState;
     }
   }
+
   getLeakSensorState(deviceState) {
     if (deviceState >= 2) {
       return 1;
@@ -1561,6 +1586,7 @@ module.exports = class WyzeAPI {
       return deviceState;
     }
   }
+
   getLockState(deviceState) {
     if (deviceState == 2) {
       return 0;
@@ -1568,6 +1594,7 @@ module.exports = class WyzeAPI {
       return 1;
     }
   }
+
   checkBatteryVoltage(value) {
     if (value >= 100) {
       return 100;
@@ -1577,20 +1604,25 @@ module.exports = class WyzeAPI {
       return value;
     }
   }
+
   rangeToFloat(value, min, max) {
     return (value - min) / (max - min);
   }
+
   floatToRange(value, min, max) {
     return Math.round(value * (max - min) + min);
   }
+
   kelvinToMired(value) {
     return Math.round(1000000 / value);
   }
+
   checkBrightnessValue(value) {
     if (value >= 1 || value <= 100) {
       return value;
     } else return value;
   }
+
   checkColorTemp(color) {
     if (color >= 500) {
       return 500;
@@ -1598,6 +1630,7 @@ module.exports = class WyzeAPI {
       return color;
     }
   }
+
   checkLowBattery(batteryVolts) {
     if (this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {
       return 1;
@@ -1607,6 +1640,7 @@ module.exports = class WyzeAPI {
   fahrenheit2celsius(fahrenheit) {
     return (fahrenheit - 32.0) / 1.8;
   }
+
   celsius2fahrenheit(celsius) {
     return celsius * 1.8 + 32.0;
   }
