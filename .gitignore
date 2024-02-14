@@ -1,6 +1,9 @@
 
-node_modules/*
-example/node_modules/*
-example/scratch/*
+node_modules
+
+# environment file
 .env
-example/.env
+
+# ignore any persisted token files
+wyze-*.json
+example/scratch/*

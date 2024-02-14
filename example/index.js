@@ -1,8 +1,8 @@
-require('dotenv').config()
+require("dotenv").config();
 
 let WyzeAPI = null;
 if (process.env.LOCAL_DEV) {
-  WyzeAPI = require('../src/index'); // Local Debug
+  WyzeAPI = require("../src/index"); // Local Debug
 } else {
   WyzeAPI = require("wyze-api");
 }
@@ -18,7 +18,10 @@ const options = {
   persistPath: process.env.PERSIST_PATH,
   logLevel: process.env.LOG_LEVEL,
   apiLogEnabled: process.env.API_LOG_ENABLED,
-}
+};
+
+logger.debug(`Starting WyzeAPI with options: ${JSON.stringify(options)}`);
+
 const wyze = new WyzeAPI(options, logger);
 
 async function loginCheck(iterations = 2) {
@@ -31,12 +34,12 @@ async function loginCheck(iterations = 2) {
 }
 
 async function deviceListCheck() {
-  const devices = await wyze.getDeviceList()
-  logger.debug(JSON.stringify(devices))
+  const devices = await wyze.getDeviceList();
+  logger.debug(JSON.stringify(devices));
 }
 
-
 (async () => {
-   await deviceListCheck();
+  await wyze.maybeLogin();
+  await deviceListCheck();
   // await loginCheck(4);
-})()
+})();

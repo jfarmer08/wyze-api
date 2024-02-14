@@ -7,23 +7,22 @@ const payloadFactory = require("./payloadFactory");
 const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
-const { time } = require("console");
 
 module.exports = class WyzeAPI {
   constructor(options, log) {
-    this.log = log;
+    this.log = log || console;
     this.persistPath = options.persistPath;
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false;
     this.lowBatteryPercentage = options.lowBatteryPercentage || 30;
     // User login parameters
     this.username = options.username;
     this.password = options.password;
-    this.mfaCode = options.mfaCode;
+    this.mfaCode = options.mfaCode; // <-- Unused since MFA support was removed.
     this.apiKey = options.apiKey;
     this.keyId = options.keyId;
 
     // Logging
-    this.logLevel = options.logLevel;
+    this.logLevel = options.logLevel; // <-- doesn't appear to be used
     this.apiLogEnabled = options.apiLogEnabled;
 
     // URLs
@@ -81,26 +80,32 @@ module.exports = class WyzeAPI {
 
   async request(url, data = {}) {
     await this.maybeLogin();
+    let response = await this._performRequest(url, this.getRequestData(data));
+    if (response.ok) {
+      return response;
+    } else if (response.error && response.error.retryAfter) {
+      this.log.error(
+        `Error: ${response.error.message}. Retrying after ${new Date(
+          response.error.retryAfter
+        )}`
+      );
 
-    try {
-      return await this._performRequest(url, this.getRequestData(data));
-    } catch (e) {
-      this.log.error(e);
-      if (this.refresh_token) {
-        this.log.error("Error, refreshing access token and trying again");
-
-        try {
-          await this.refreshToken();
-          return await this._performRequest(url, this.getRequestData(data));
-        } catch (e) {
-          //
-        }
+      const retryAfterMs = response.error.retryAfter - new Date().getTime();
+      if (retryAfterMs > 0) {
+        this.log.debug(`Waiting for ${retryAfterMs}ms before retrying`);
+        await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
       }
 
-      this.log.error("Error, logging in and trying again");
-
-      await this.login();
-      return this._performRequest(url, this.getRequestData(data));
+      await this.maybeLogin();
+      response = await this._performRequest(url, this.getRequestData(data));
+      if (response.ok) return response;
+      throw new Error(
+        `Error: ${response.error?.message || "Request Failed After Retry"}`
+      );
+    } else {
+      throw new Error(
+        `Request Failed: ${response.error?.message || "Unknown Error"}`
+      );
     }
   }
 
@@ -113,43 +118,184 @@ module.exports = class WyzeAPI {
       ...config,
     };
 
-    if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-    if (this.apiLogEnabled)
-      this.log.debug(`Request config: ${JSON.stringify(config)}`);
+    if (this.apiLogEnabled) {
+      this.log.debug(`Performing request: ${JSON.stringify(config)}`);
+    }
 
-    let result;
-
-    try {
-      result = await axios(config);
-      if (this.apiLogEnabled)
-        this.log.debug(
-          `API response PerformRequest: ${JSON.stringify(result.data)}`
-        );
-      if (this.dumpData) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `API response PerformRequest: ${JSON.stringify(result.data)}`
-          );
-        this.dumpData = false; // Only want to do this once at start-up
-      }
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-      if (e.response) {
+    const result = await axios(config).catch((err) => {
+      if (err.response) {
         this.log.error(
-          `Response PerformRequest (${e.response}): ${JSON.stringify(
-            e.response.data
+          `Request Failed: ${JSON.stringify({
+            url,
+            status: err.response.status,
+            data: err.response.data,
+            headers: err.response.headers,
+          })}`
+        );
+      } else {
+        this.log.error(
+          `Request Failed: ${JSON.stringify({
+            url,
+            message: err.message,
+          })}`
+        );
+      }
+
+      throw err;
+    });
+
+    // if dumpData is enabled for everyone, sanitize the token for logging
+    if (this.dumpData) {
+      this.dumpData = false;
+      this.log.debug(
+        `API response PerformRequest: ${JSON.stringify(
+          result.data,
+          (key, val) => (key.includes("token") ? "*******" : val)
+        )}`
+      );
+    } else if (this.apiLogEnabled) {
+      this.log.debug(
+        `API response PerformRequest: ${JSON.stringify({
+          url,
+          status: result.status,
+          data: result.data,
+          headers: result.headers,
+        })}`
+      );
+    }
+
+    // check for rate limiting - "x-ratelimit-remaining" | "x-ratelimit-reset-by"
+    // headers point to 20 requests / 10 minutes for auth requests &
+    // 300 requests / 5 minutes for others
+    try {
+      // "x-ratelimit-remaining":"293",
+      const rateLimitRemaining = result.headers["x-ratelimit-remaining"]
+        ? Number(result.headers["x-ratelimit-remaining"])
+        : undefined;
+
+      // "x-ratelimit-reset-by":"Wed Feb 14 05:02:01 GMT 2024"
+      const rateLimitResetBy = result.headers["x-ratelimit-reset-by"]
+        ? new Date(result.headers["x-ratelimit-reset-by"])
+        : undefined;
+
+      if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
+        const resetsIn =
+          (rateLimitResetBy || new Date()).getTime() - new Date().getTime();
+        this.log.warning(
+          `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
+        );
+        await new Promise((resolve) => setTimeout(resolve, resetsIn));
+      } else if (rateLimitRemaining > 0 && this.apiLogEnabled) {
+        this.log.debug(
+          `API rate limit remaining: ${rateLimitRemaining}. Expires in ${
+            (rateLimitResetBy || new Date()).getTime() - new Date().getTime()
+          }ms`
+        );
+      }
+    } catch (err) {
+      if (this.apiLogEnabled)
+        this.log.error(`Error checking rate limit: ${err}`);
+    }
+
+    // 1 is reserved for success. If the code is not 1, treat as an error
+    if (
+      "code" in result.data &&
+      (typeof result.data.code === "string" ||
+        typeof result.data.code === "number") &&
+      Number(result.data.code) !== 1
+    ) {
+      const code = Number(result.data.code); // can be wrapped in a string
+      const errorMessage = `${
+        result.data.msg || result.data.description || "Unknown Wyze API Error"
+      }`;
+      this.log.error(`Wyze API Error (${code}): '${errorMessage}'`);
+
+      // code 1000 is related to user account along with some other messages
+      if (
+        [
+          "UserNameOrPasswordError",
+          "UserIsLocked",
+          "Invalid User Name or Password",
+        ].some((msg) => errorMessage.toLowerCase().includes(msg.toLowerCase()))
+      ) {
+        // TODO: What measures should we take to prevent additional login attempts?
+        this.access_token = "";
+        throw new Error(
+          `Invalid Credentials - please check your credentials & account before trying again. Error: ${errorMessage}`
+        );
+      }
+
+      // Rate-Limited
+      if (
+        code === 3044 ||
+        (code === 1000 &&
+          errorMessage.toLowerCase().includes("too many failed attempts"))
+      ) {
+        return {
+          ...result,
+          ok: false,
+          data: result.data,
+          error: {
+            retryAfter: new Date().getTime() + 600_000, // 10 minutes from now
+            message: `Rate Limited - please wait before trying again. Error: ${errorMessage}`,
+            code: code,
+          },
+        };
+      }
+
+      // finding conflicting information on whether 1003 is retryable or not.
+      // it is reported to be an auth error but also a device error
+      if (code === 1003) {
+        throw new Error(`Wyze API Error: ${errorMessage}`);
+      }
+
+      if (
+        code === 2001 ||
+        errorMessage.toLowerCase().includes("accesstokenerror") ||
+        errorMessage.toLowerCase().includes("access token is error")
+      ) {
+        this.access_token = "";
+        await this.refreshToken().catch((err) => {
+          throw new Error(
+            `Refresh Token could not be used to get a new access token. ${err}`
+          );
+        });
+
+        return {
+          ...result,
+          ok: false,
+          data: result.data,
+          error: {
+            retryAfter: this.access_token ? new Date().getTime() : 0,
+            message: this.access_token
+              ? `Access Token had expired and a new one was obtained. Please retry your request.`
+              : `Access Token Error - please refresh your access token. Error: ${errorMessage}`,
+            code: code,
+          },
+        };
+      }
+
+      if ([1001, 1004].includes(code)) {
+        throw new Error(
+          `Wyze API Bad Request: Check your request parameters - ${JSON.stringify(
+            {
+              code: code,
+              message: errorMessage,
+              url,
+              requestBody: data,
+            }
           )}`
         );
       }
 
-      throw e;
+      throw new Error(`Wyze API Error (${code}) - ${errorMessage}`);
     }
 
-    if (result.data.code && result.data.code != 1) {
-      this.log.debug(`Potentially recoverable error during request, '${result.data.msg}'`)
-      throw new Error("Potentially recoverable error during request");
-    }
-    return result;
+    return {
+      ...result,
+      ok: true,
+      data: result.data,
+    };
   }
 
   _performLoginRequest(data = {}) {
@@ -174,27 +320,28 @@ module.exports = class WyzeAPI {
   }
 
   async login() {
-    let result;
-    // Do we need apiKey or keyId?
+    // Wyze requires 2 sets of credentials to login + MFA - username/password, apiKey/keyId
     if (this.apiKey == null) {
       throw new Error(
         'ApiKey Required, Please provide the "apiKey" parameter in config.json'
       );
     } else if (this.keyId == null) {
       throw new Error(
-        'KeyId Required, Please provide the "keyid" parameter in config.json'
+        'KeyId Required, Please provide the "keyId" parameter in config.json'
       );
     } else {
-      try {
-        result = await this._performLoginRequest();
-        if (this.apiLogEnabled)
-          this.log.debug("Successfully logged into Wyze API");
-        await this._updateTokens(result.data);
-      } catch (error) {
+      const result = await this._performLoginRequest();
+      if (!result.ok || !result.data.access_token) {
         throw new Error(
-          "Invalid credentials, please check username, password, keyid or apikey" + error
+            result
+          )}`
         );
       }
+
+      if (this.apiLogEnabled) {
+        this.log.debug("Successfully logged into Wyze API");
+      }
+      await this._updateTokens(result.data);
     }
   }
 
@@ -236,7 +383,7 @@ module.exports = class WyzeAPI {
             " seconds"
         );
 
-        var waitTime = 0;
+        let waitTime = 0;
         while (waitTime < this.loginAttemptDebounceMilliseconds) {
           await this.sleep(2);
           waitTime = waitTime + 2000;
@@ -264,8 +411,13 @@ module.exports = class WyzeAPI {
     };
 
     const result = await this._performRequest("app/user/refresh_token", data);
-
-    await this._updateTokens(result.data.data);
+    if (result.ok && result.data.data) {
+      await this._updateTokens(result.data.data);
+    } else {
+      throw new Error(
+        `Failed to refresh access token - ${JSON.stringify(result)}`
+      );
+    }
   }
 
   async _updateTokens({ access_token, refresh_token }) {
@@ -285,8 +437,10 @@ module.exports = class WyzeAPI {
       access_token: this.access_token,
       refresh_token: this.refresh_token,
     };
-    this.log.debug(this._tokenPersistPath());
-    await fs.writeFile(this._tokenPersistPath(), JSON.stringify(data));
+    const tokenPath = this._tokenPersistPath();
+
+    if (this.apiLogEnabled) this.log.debug(`Persisting tokens @ ${tokenPath}`);
+    await fs.writeFile(tokenPath, JSON.stringify(data));
   }
 
   async _loadPersistedTokens() {
@@ -296,13 +450,12 @@ module.exports = class WyzeAPI {
       this.access_token = data.access_token;
       this.refresh_token = data.refresh_token;
     } catch (e) {
-      //
+      if (this.apiLogEnabled) this.log.debug("No persisted tokens found");
     }
   }
 
   async getObjectList() {
     const result = await this.request("app/v2/home_page/get_object_list");
-
     return result.data;
   }
 
@@ -313,7 +466,6 @@ module.exports = class WyzeAPI {
     };
 
     const result = await this.request("app/v2/device/get_property_list", data);
-
     return result.data;
   }
 
@@ -342,7 +494,6 @@ module.exports = class WyzeAPI {
       this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action", data);
-
     return result.data;
   }
 
@@ -385,24 +536,21 @@ module.exports = class WyzeAPI {
     const data = {
       action_list: actionList,
     };
+
     if (this.apiLogEnabled)
       this.log.debug(`run_action_list Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action_list", data);
-
     return result.data;
   }
 
   async controlLock(deviceMac, deviceModel, action) {
     await this.maybeLogin();
     let path = "/openapi/lock/v1/control";
-
     let payload = {
       uuid: this.getUuid(deviceMac, deviceModel),
-      action: action, // "remoteLock" or "remoteUnlock"
+      action, // "remoteLock" or "remoteUnlock"
     };
-
-    let result;
 
     try {
       payload = payloadFactory.fordCreatePayload(
@@ -412,34 +560,33 @@ module.exports = class WyzeAPI {
         "post"
       );
 
-      let urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
-      result = await axios.post(urlPath, payload);
-      if (this.apiLogEnabled)
-        this.log(`API response ControLock: ${JSON.stringify(result.data)}`);
+      const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
+      const result = await axios.post(urlPath, payload);
+      if (this.apiLogEnabled) {
+        this.log.debug(
+          `API response ControLock: ${JSON.stringify(result.data)}`
+        );
+      }
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log(
-            `Response ControLock (${e.response.statusText}): ${JSON.stringify(
-              e.response.data,
-              null,
-              "\t"
-            )}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response ControLock (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async getLockInfo(deviceMac, deviceModel) {
     await this.maybeLogin();
-
-    let result;
     let url_path = "/openapi/lock/v1/info";
-
     let payload = {
       uuid: this.getUuid(deviceMac, deviceModel),
       with_keypad: "1",
@@ -456,33 +603,32 @@ module.exports = class WyzeAPI {
       );
 
       const url = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/info";
-      result = await axios.get(url, config);
-      if (this.apiLogEnabled)
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response GetLockInfo: ${JSON.stringify(result.data)}`
         );
+      }
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log(
-            `Response GetLockInfo (${e.response.statusText}): ${JSON.stringify(
-              e.response.data,
-              null,
-              "\t"
-            )}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response GetLockInfo (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async getIotProp(deviceMac) {
     let keys =
       "iot_state,switch-power,switch-iot,single_press_type, double_press_type, triple_press_type, long_press_type";
     await this.maybeLogin();
-    let result;
     let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
     let signature = crypto.oliveCreateSignature(payload, this.access_token);
     let config = {
@@ -498,33 +644,33 @@ module.exports = class WyzeAPI {
       params: payload,
     };
     try {
-      let url =
+      const url =
         "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
-      result = await axios.get(url, config);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
       if (this.apiLogEnabled)
-        this.log(`API response GetIotProp: ${JSON.stringify(result.data)}`);
+        this.log.debug(
+          `API response GetIotProp: ${JSON.stringify(result.data)}`
+        );
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log(
-            `Response GetIotProp (${e.response.statusText}): ${JSON.stringify(
-              e.response.data,
-              null,
-              "\t"
-            )}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response GetIotProp (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async setIotProp(deviceMac, product_model, propKey, value) {
     await this.maybeLogin();
-    let result;
     let payload = payloadFactory.oliveCreatePostPayload(
       deviceMac,
       product_model,
@@ -552,28 +698,34 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic";
-      result = await axios.post(url, JSON.stringify(payload), config);
-      //if(this.apiLogEnabled) this.log(`API response SetIotProp: ${JSON.stringify(result.data)}`)
-      console.result;
+      const result = await axios.post(url, JSON.stringify(payload), config);
+      if (this.apiLogEnabled) {
+        this.log.debug(
+          `API response SetIotProp: ${JSON.stringify(result.data)}`
+        );
+      }
+
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        //if(this.apiLogEnabled) this.log(`Response SetIotProp (${e.response.statusText}): ${JSON.stringify(e.response.data, null, '\t')}`)
-        console.log(e.response);
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response SetIotProp (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async getUserProfile() {
     await this.maybeLogin();
 
-    let result;
     let payload = payloadFactory.oliveCreateUserInfoPayload();
     let signature = crypto.oliveCreateSignature(payload, this.access_token);
-
     let config = {
       headers: {
         "Accept-Encoding": "gzip",
@@ -587,33 +739,35 @@ module.exports = class WyzeAPI {
       params: payload,
     };
     try {
-      let url =
+      const url =
         "https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile";
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-      result = await axios.get(url, config);
-      if (this.apiLogEnabled)
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response GetUserProfile: ${JSON.stringify(result.data)}`
         );
+      }
+
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response GetUserProfile (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response GetUserProfile (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async disableRemeAlarm(hms_id) {
     await this.maybeLogin();
-    let result;
     let config = {
       headers: {
         Authorization: this.access_token,
@@ -627,29 +781,28 @@ module.exports = class WyzeAPI {
     try {
       const url = "https://hms.api.wyze.com/api/v1/reme-alarm";
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-      result = await axios.delete(url, config);
-      if (this.apiLogEnabled)
+      const result = await axios.delete(url, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response DisableRemeAlarm: ${JSON.stringify(result.data)}`
         );
+      }
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response DisableRemeAlarm (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response DisableRemeAlarm (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async getPlanBindingListByUser() {
     await this.maybeLogin();
-    let result;
     let payload = payloadFactory.oliveCreateHmsPayload();
     let signature = crypto.oliveCreateSignature(payload, this.access_token);
     let config = {
@@ -669,35 +822,33 @@ module.exports = class WyzeAPI {
       const url =
         "https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user";
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-      result = await axios.get(url, config);
-      if (this.apiLogEnabled)
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response GetPlanBindingListByUser: ${JSON.stringify(
             result.data
           )}`
         );
+      }
+
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response GetPlanBindingListByUser (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response GetPlanBindingListByUser (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async monitoringProfileStateStatus(hms_id) {
     await this.maybeLogin();
-    let result;
     let query = payloadFactory.oliveCreateHmsGetPayload(hms_id);
     let signature = crypto.oliveCreateSignature(query, this.access_token);
-
     let config = {
       headers: {
         "User-Agent": this.userAgent,
@@ -716,32 +867,31 @@ module.exports = class WyzeAPI {
       const url =
         "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status";
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-      result = await axios.get(url, config);
-      if (this.apiLogEnabled)
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response MonitoringProfileStateStatus: ${JSON.stringify(
             result.data
           )}`
         );
+      }
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response MonitoringProfileStateStatus (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response MonitoringProfileStateStatus (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async monitoringProfileActive(hms_id, home, away) {
     await this.maybeLogin();
-    let result;
     const payload = payloadFactory.oliveCreateHmsPatchPayload(hms_id);
     const signature = crypto.oliveCreateSignature(payload, this.access_token);
 
@@ -773,30 +923,29 @@ module.exports = class WyzeAPI {
       const url =
         "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active";
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-      result = await axios.patch(url, data, config);
-      if (this.apiLogEnabled)
+      const result = await axios.patch(url, data, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response MonitoringProfileActive: ${JSON.stringify(result.data)}`
         );
+      }
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response MonitoringProfileActive (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response MonitoringProfileActive (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async thermostatGetIotProp(deviceMac) {
     await this.maybeLogin();
-    let result;
     let keys =
       "trigger_off_val,emheat,temperature,humidity,time2temp_val,protect_time,mode_sys,heat_sp,cool_sp, current_scenario,config_scenario,temp_unit,fan_mode,iot_state,w_city_id,w_lat,w_lon,working_state, dev_hold,dev_holdtime,asw_hold,app_version,setup_state,wiring_logic_id,save_comfort_balance, kid_lock,calibrate_humidity,calibrate_temperature,fancirc_time,query_schedule";
     let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
@@ -814,33 +963,33 @@ module.exports = class WyzeAPI {
       params: payload,
     };
     try {
-      let url =
+      const url =
         "https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop";
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
-      result = await axios.get(url, config);
-      if (this.apiLogEnabled)
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`
         );
+      }
+
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response ThermostatGetIotProp (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response ThermostatGetIotProp (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async thermostatSetIotProp(deviceMac, deviceModel, propKey, value) {
     await this.maybeLogin();
-    let result;
     let payload = payloadFactory.oliveCreatePostPayload(
       deviceMac,
       deviceModel,
@@ -867,25 +1016,26 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-earth-service.wyzecam.com/plugin/earth/set_iot_prop_by_topic";
-      result = await axios.post(url, JSON.stringify(payload), config);
-      if (this.apiLogEnabled)
+      const result = await axios.post(url, JSON.stringify(payload), config);
+      if (this.apiLogEnabled) {
         this.log.debug(
           `API response ThermostatSetIotProp: ${JSON.stringify(result.data)}`
         );
+      }
+
+      return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        if (this.apiLogEnabled)
-          this.log.debug(
-            `Response ThermostatSetIotProp (${
-              e.response.statusText
-            }): ${JSON.stringify(e.response.data, null, "\t")}`
-          );
+      if (e.response && this.apiLogEnabled) {
+        this.log.error(
+          `Response ThermostatSetIotProp (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
       }
       throw e;
     }
-    return result.data;
   }
 
   async localBulbCommand(
@@ -925,12 +1075,12 @@ module.exports = class WyzeAPI {
       if (this.apiLogEnabled)
         this.log.debug(`API response Local Bulb: ${result.data}`);
     } catch (error) {
-      console.log(error);
-      console.log(
+      this.log.error(error);
+      this.log.error(
         `Failed to connect to bulb ${deviceMac}, reverting to cloud.`
       );
 
-      //await this.runActionList(bulb, plist)
+      // await this.runActionList(bulb, plist)
     }
   }
 
@@ -1365,7 +1515,7 @@ module.exports = class WyzeAPI {
   }
 
   async getHmsUpdate(hms_id) {
-    return await this.plugin.client.monitoringProfileStateStatus(hms_id);
+    return await this.monitoringProfileStateStatus(hms_id);
   }
 
   async getDeviceState(device) {
