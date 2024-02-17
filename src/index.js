@@ -1141,10 +1141,10 @@ module.exports = class WyzeAPI {
     await this.setProperty(deviceMac, deviceModel, "P3", value);
   }
   async plugTurnOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "0");
+    await this.setProperty(deviceMac, deviceModel, "P3", "1");
   }
   async plugTurnOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "1");
+    await this.setProperty(deviceMac, deviceModel, "P3", "0");
   }
 
   //WyzeLight
@@ -1158,10 +1158,10 @@ module.exports = class WyzeAPI {
     await this.setProperty(deviceMac, deviceModel, "P3", value);
   }
   async lightTurnOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "0");
+    await this.lightPower(deviceMac, deviceModel, "P3", "1");
   }
   async lightTurnOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "1");
+    await this.setProperty(deviceMac, deviceModel, "P3", "0");
   }
 
   async setBrightness(deviceMac, deviceModel, value) {
