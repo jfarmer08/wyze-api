@@ -165,8 +165,8 @@ module.exports = class WyzeAPI {
     }
 
     // check for rate limiting - "x-ratelimit-remaining" | "x-ratelimit-reset-by"
-    // headers point to 20 requests / 10 minutes for auth requests &
-    // 300 requests / 5 minutes for others
+    // headers point to 20 requests / 10 minutes / 600 seconds // 600000 milliseconds for auth requests &
+    // 300 requests / 5 minutes / 300 seconds // 300000 milliseconds for others
     try {
       // "x-ratelimit-remaining":"293",
       const rateLimitRemaining = result.headers["x-ratelimit-remaining"]
