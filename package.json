@@ -1,6 +1,6 @@
 {
   "name": "wyze-api",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "An unoficial API wrapper for Wyze products.",
   "homepage": "https://github.com/jfarmer08/wyze-api",
   "main": "./src/index.js",
