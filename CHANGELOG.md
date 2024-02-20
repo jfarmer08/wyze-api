@@ -1,6 +1,8 @@
 # wyze-api
 
 ## Releases
+### v1.1.7
+- Change Logging
 
 ### v1.1.6
 - Refactor Wyze Auth & Core Api Fetching https://github.com/jfarmer08/wyze-api/pull/12
