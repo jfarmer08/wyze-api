@@ -22,7 +22,6 @@ module.exports = class WyzeAPI {
     this.keyId = options.keyId;
 
     // Logging
-    this.logLevel = options.logLevel; // <-- doesn't appear to be used
     this.apiLogEnabled = options.apiLogEnabled;
 
     // URLs
@@ -92,7 +91,7 @@ module.exports = class WyzeAPI {
 
       const retryAfterMs = response.error.retryAfter - new Date().getTime();
       if (retryAfterMs > 0) {
-        this.log.debug(`Waiting for ${retryAfterMs}ms before retrying`);
+        this.log(`Waiting for ${retryAfterMs}ms before retrying`);
         await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
       }
 
@@ -119,7 +118,7 @@ module.exports = class WyzeAPI {
     };
 
     if (this.apiLogEnabled) {
-      this.log.debug(`Performing request: ${JSON.stringify(config)}`);
+      this.log(`Performing request: ${JSON.stringify(config)}`);
     }
 
     const result = await axios(config).catch((err) => {
@@ -147,14 +146,14 @@ module.exports = class WyzeAPI {
     // if dumpData is enabled for everyone, sanitize the token for logging
     if (this.dumpData) {
       this.dumpData = false;
-      this.log.debug(
+      this.log(
         `API response PerformRequest: ${JSON.stringify(
           result.data,
           (key, val) => (key.includes("token") ? "*******" : val)
         )}`
       );
     } else if (this.apiLogEnabled) {
-      this.log.debug(
+      this.log(
         `API response PerformRequest: ${JSON.stringify({
           url,
           status: result.status,
@@ -181,19 +180,18 @@ module.exports = class WyzeAPI {
       if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
         const resetsIn =
           (rateLimitResetBy || new Date()).getTime() - new Date().getTime();
-        this.log.warning(
+        this.log(
           `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
         );
         await new Promise((resolve) => setTimeout(resolve, resetsIn));
       } else if (rateLimitRemaining && this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API rate limit remaining: ${rateLimitRemaining}. Expires in ${
             (rateLimitResetBy || new Date()).getTime() - new Date().getTime()
           }ms`
         );
       }
     } catch (err) {
-      if (this.apiLogEnabled)
         this.log.error(`Error checking rate limit: ${err}`);
     }
 
@@ -339,7 +337,7 @@ module.exports = class WyzeAPI {
         );
       }
       if (this.apiLogEnabled) {
-        this.log.debug("Successfully logged into Wyze API");
+        this.log("Successfully logged into Wyze API");
       }
       await this._updateTokens(result.data);
     }
@@ -354,7 +352,7 @@ module.exports = class WyzeAPI {
       let now = new Date().getTime();
       // check if the last login attempt occurred too recently
       if (this.apiLogEnabled)
-        this.log.debug(
+        this.log(
           "Last login " +
             this.lastLoginAttempt +
             " debounce " +
@@ -377,7 +375,7 @@ module.exports = class WyzeAPI {
         this.lastLoginAttempt = now;
         await this.login();
       } else {
-        this.log.warning(
+        this.log(
           "Attempting to login before debounce has cleared, waiting " +
             this.loginAttemptDebounceMilliseconds / 1000 +
             " seconds"
@@ -438,7 +436,7 @@ module.exports = class WyzeAPI {
     };
     const tokenPath = this._tokenPersistPath();
 
-    if (this.apiLogEnabled) this.log.debug(`Persisting tokens @ ${tokenPath}`);
+    if (this.apiLogEnabled) this.log(`Persisting tokens @ ${tokenPath}`);
     await fs.writeFile(tokenPath, JSON.stringify(data));
   }
 
@@ -449,7 +447,7 @@ module.exports = class WyzeAPI {
       this.access_token = data.access_token;
       this.refresh_token = data.refresh_token;
     } catch (e) {
-      if (this.apiLogEnabled) this.log.debug("No persisted tokens found");
+      if (this.apiLogEnabled) this.log("No persisted tokens found");
     }
   }
 
@@ -490,7 +488,7 @@ module.exports = class WyzeAPI {
     };
 
     if (this.apiLogEnabled)
-      this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`);
+      this.log(`run_action Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action", data);
     return result.data;
@@ -537,7 +535,7 @@ module.exports = class WyzeAPI {
     };
 
     if (this.apiLogEnabled)
-      this.log.debug(`run_action_list Data Body: ${JSON.stringify(data)}`);
+      this.log(`run_action_list Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action_list", data);
     return result.data;
@@ -562,15 +560,15 @@ module.exports = class WyzeAPI {
       const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
       const result = await axios.post(urlPath, payload);
       if (this.apiLogEnabled) {
-        this.log.debug(
-          `API response ControLock: ${JSON.stringify(result.data)}`
+        this.log(
+          `API response ControlLock: ${JSON.stringify(result.data)}`
         );
       }
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response ControLock (${e.response.statusText}): ${JSON.stringify(
             e.response.data,
@@ -604,14 +602,14 @@ module.exports = class WyzeAPI {
       const url = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/info";
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response GetLockInfo: ${JSON.stringify(result.data)}`
         );
       }
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response GetLockInfo (${e.response.statusText}): ${JSON.stringify(
             e.response.data,
@@ -645,17 +643,17 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled)
-        this.log.debug(
+        this.log(
           `API response GetIotProp: ${JSON.stringify(result.data)}`
         );
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response GetIotProp (${e.response.statusText}): ${JSON.stringify(
             e.response.data,
@@ -699,7 +697,7 @@ module.exports = class WyzeAPI {
         "https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic";
       const result = await axios.post(url, JSON.stringify(payload), config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response SetIotProp: ${JSON.stringify(result.data)}`
         );
       }
@@ -707,7 +705,7 @@ module.exports = class WyzeAPI {
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response SetIotProp (${e.response.statusText}): ${JSON.stringify(
             e.response.data,
@@ -740,10 +738,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response GetUserProfile: ${JSON.stringify(result.data)}`
         );
       }
@@ -752,7 +750,7 @@ module.exports = class WyzeAPI {
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response GetUserProfile (${e.response.statusText}): ${JSON.stringify(
             e.response.data,
@@ -779,10 +777,10 @@ module.exports = class WyzeAPI {
     };
     try {
       const url = "https://hms.api.wyze.com/api/v1/reme-alarm";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.delete(url, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response DisableRemeAlarm: ${JSON.stringify(result.data)}`
         );
       }
@@ -820,10 +818,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response GetPlanBindingListByUser: ${JSON.stringify(
             result.data
           )}`
@@ -833,7 +831,7 @@ module.exports = class WyzeAPI {
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response GetPlanBindingListByUser (${
             e.response.statusText
@@ -865,10 +863,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response MonitoringProfileStateStatus: ${JSON.stringify(
             result.data
           )}`
@@ -878,7 +876,7 @@ module.exports = class WyzeAPI {
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response MonitoringProfileStateStatus (${
             e.response.statusText
@@ -921,10 +919,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.patch(url, data, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response MonitoringProfileActive: ${JSON.stringify(result.data)}`
         );
       }
@@ -932,7 +930,7 @@ module.exports = class WyzeAPI {
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response MonitoringProfileActive (${
             e.response.statusText
@@ -964,10 +962,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop";
-      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`
         );
       }
@@ -976,7 +974,7 @@ module.exports = class WyzeAPI {
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response ThermostatGetIotProp (${
             e.response.statusText
@@ -1017,7 +1015,7 @@ module.exports = class WyzeAPI {
         "https://wyze-earth-service.wyzecam.com/plugin/earth/set_iot_prop_by_topic";
       const result = await axios.post(url, JSON.stringify(payload), config);
       if (this.apiLogEnabled) {
-        this.log.debug(
+        this.log(
           `API response ThermostatSetIotProp: ${JSON.stringify(result.data)}`
         );
       }
@@ -1026,7 +1024,7 @@ module.exports = class WyzeAPI {
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
 
-      if (e.response && this.apiLogEnabled) {
+      if (e.response) {
         this.log.error(
           `Response ThermostatSetIotProp (${
             e.response.statusText
@@ -1073,7 +1071,7 @@ module.exports = class WyzeAPI {
       //const response = await fetch(url, { method: "POST",body: payload_str})
       let result = await axios.post(url, payload_str);
       if (this.apiLogEnabled)
-        this.log.debug(`API response Local Bulb: ${result.data}`);
+        this.log(`API response Local Bulb: ${result.data}`);
     } catch (error) {
       this.log.error(error);
       this.log.error(
