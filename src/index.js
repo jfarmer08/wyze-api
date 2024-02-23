@@ -1043,33 +1043,34 @@ module.exports = class WyzeAPI {
     propertyId,
     propertyValue
   ) {
+
+    const plist = [
+      {
+        pid: propertyId,
+        pvalue: String(propertyValue),
+      },
+    ];
+
     const characteristics = {
-      mac: deviceMac.toUpperCase(),
-      index: "1",
-      ts: String(Math.floor(Date.now() / 1000000)),
-      plist: [
-        {
-          pid: propertyId,
-          pvalue: String(propertyValue),
-        },
-      ],
-    };
+      "mac": deviceMac.toUpperCase(),
+      "index": "1",
+      "ts": String(Math.floor(Date.now())),
+      "plist": plist
+  };
 
-    const characteristics_str = JSON.stringify(characteristics);
-    const characteristics_enc = util.encrypt(deviceEnr, characteristics_str);
-
-    const payload = {
-      request: "set_status",
-      isSendQueue: 0,
-      characteristics: characteristics_enc,
-    };
-    const payload_str = JSON.stringify(payload);
-
-    const url = `http://${deviceIp}:88/device_request`;
+  const characteristicsStr = JSON.stringify(characteristics);
+  const characteristicsEnc = encrypt(deviceEnr, characteristicsStr);
+  const payload = {
+      "request": "set_status",
+      "isSendQueue": 0,
+      "characteristics": characteristicsEnc
+  };
+  const payloadStr = JSON.stringify(payload).replace(/\\\\/g, '\\');
+  const url = `http://${deviceIp}:88/device_request`;
 
     try {
       //const response = await fetch(url, { method: "POST",body: payload_str})
-      let result = await axios.post(url, payload_str);
+      let result = await axios.post(url, payloadStr);
       if (this.apiLogEnabled)
         this.log(`API response Local Bulb: ${result.data}`);
     } catch (error) {

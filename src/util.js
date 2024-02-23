@@ -1,34 +1,34 @@
 const crypto = require("crypto-js");
-const base64 = require("base64-js");
 
-const PADDING = crypto.enc.Hex.parse("05");
+const PADDING = Buffer.from("05", "hex");
 
 function pad(plainText) {
-  const raw = btoa(plainText);
-  const padNum = crypto.blockSize - (raw.sigBytes % crypto.blockSize);
-  const padded = raw.concat(PADDING * padNum);
-  return padded;
+    const raw = Buffer.from(plainText, "ascii");
+    const padNum = 16 - (raw.length % 16);
+    const paddedRaw = Buffer.concat([raw, PADDING.repeat(padNum)]);
+    return paddedRaw;
 }
 
 function encrypt(key, text) {
-  const raw = pad(text);
-  const keyBytes = crypto.enc.Utf8.parse(key);
-  const iv = keyBytes;
-  const cipher = crypto.AES.encrypt(raw, keyBytes, { iv: iv });
-  const encrypted = cipher.ciphertext;
-  const base64Enc = base64.fromByteArray(encrypted.words);
-  const escapedEnc = base64Enc.replace(/\//g, "\\/");
-  return escapedEnc;
+    const raw = pad(text);
+    const keyBuffer = Buffer.from(key, "ascii");
+    const iv = keyBuffer;
+    const cipher = crypto.createCipheriv('aes-128-cbc', keyBuffer, iv);
+    let enc = cipher.update(raw);
+    enc = Buffer.concat([enc, cipher.final()]);
+    let b64Enc = enc.toString('base64');
+    b64Enc = b64Enc.replace(/\//g, '\\/');
+    return b64Enc;
 }
 
 function decrypt(key, enc) {
-  const keyBytes = crypto.enc.Utf8.parse(key);
-  const iv = keyBytes;
-  const encrypted = base64.toByteArray(enc);
-  const cipherParams = { ciphertext: crypto.lib.WordArray.create(encrypted) };
-  const decrypted = crypto.AES.decrypt(cipherParams, keyBytes, { iv: iv });
-  const decryptedText = decrypted.toString(crypto.enc.Utf8);
-  return decryptedText;
+  const encBuffer = Buffer.from(enc, 'base64');
+  const keyBuffer = Buffer.from(key, 'ascii');
+  const iv = keyBuffer;
+  const decipher = crypto.createDecipheriv('aes-128-cbc', keyBuffer, iv);
+  let decrypted = decipher.update(encBuffer);
+  decrypted = Buffer.concat([decrypted, decipher.final()]);
+  return decrypted.toString('ascii');
 }
 
 function createPassword(password) {
