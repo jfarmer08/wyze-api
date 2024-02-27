@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const cryptojs = require("crypto-js");
 
 const PADDING = Buffer.from("05", "hex");
 
@@ -32,9 +33,9 @@ function decrypt(key, enc) {
 
 
 function createPassword(password) {
-  const hex1 = crypto.MD5(password).toString();
-  const hex2 = crypto.MD5(hex1).toString();
-  const hashedPassword = crypto.MD5(hex2).toString();
+  const hex1 = cryptojs.MD5(password).toString();
+  const hex2 = cryptojs.MD5(hex1).toString();
+  const hashedPassword = cryptojs.MD5(hex2).toString();
   return hashedPassword;
 }
 

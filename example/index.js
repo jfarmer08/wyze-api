@@ -37,9 +37,9 @@ async function deviceListCheck() {
   //const devices = await wyze.getDeviceByMac('7C78B2OA4ECO')
   const devices = await wyze.getDeviceByName('Bob')
   logger.debug(JSON.stringify(devices));
-  const cleaner = await wyze.setVacuumCleanStart(devices.mac)
+  //const cleaner = await wyze.setVacuumCleanStart(devices.mac)
   //const bulb = await wyze.localBulbCommand(devices.product_model,devices.mac,devices.enr,devices.device_params.ip, "P3", "1")
-  logger.debug(JSON.stringify(cleaner));
+  //logger.debug(JSON.stringify(cleaner));
 }
 
 (async () => {
