@@ -7,6 +7,11 @@ module.exports = Object.freeze({
   oliveSigningSecret: "wyze_app_secret_key_132", // Required for the thermostat
   oliveAppId: "9319141212m2ik", //  Required for the thermostat
   appInfo: "wyze_android_2.19.14", // Required for the thermostat
+  //vacuum
+  appId: "venp_4c30f812828de875",
+  venusPluginVersion: "2.35.1",
+  vacuumFirmwareVersion: "1.6.113",
+
 
   // App emulation constants
   phoneId: "wyze_developer_api",
@@ -21,4 +26,5 @@ module.exports = Object.freeze({
   //URLs
   authBaseUrl: "https://auth-prod.api.wyze.com",
   apiBaseUrl: "https://api.wyzecam.com",
+  venusService: "https://wyze-venus-service-vn.wyzecam.com",
 });

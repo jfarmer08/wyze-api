@@ -46,46 +46,8 @@ function oliveCreateSignature(payload, access_token) {
     return digest
 }
 
-
-//New Calls 
-function olive_create_signature(payload, access_token) {
-    let body
-
-    if (typeof payload === "object") {
-        body = Object.keys(payload)
-            .sort()
-            .map(key => `${key}=${payload[key]}`)
-            .join("&")
-    } else {
-        body = payload
-    }
-
-    const access_key = `${access_token}${constants.oliveSigningSecret}`
-    const secret = crypto.createHash("md5").update(access_key).digest("hex")
-
-    return crypto.createHmac("md5", secret).update(body).digest("hex")
-}
-
-function ford_create_signature(url_path, request_method, payload) {
-    let string_buf = request_method + url_path
-
-    Object.keys(payload)
-        .sort()
-        .forEach(key => {
-            string_buf += `${key}=${payload[key]}&`
-        })
-
-    string_buf = string_buf.slice(0, -1)
-    string_buf += constants.fordAppSecret
-
-    const urlencoded = querystring.escape(string_buf)
-    return crypto.createHash("md5").update(urlencoded).digest("hex")
-}
-
 module.exports = {
     fordCreateSignature,
     oliveCreateSignatureSingle,
     oliveCreateSignature,
-    olive_create_signature,
-    ford_create_signature
 }

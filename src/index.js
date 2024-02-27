@@ -91,7 +91,7 @@ module.exports = class WyzeAPI {
 
       const retryAfterMs = response.error.retryAfter - new Date().getTime();
       if (retryAfterMs > 0) {
-        this.log(`Waiting for ${retryAfterMs}ms before retrying`);
+        this.log.debug(`Waiting for ${retryAfterMs}ms before retrying`);
         await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
       }
 
@@ -118,7 +118,7 @@ module.exports = class WyzeAPI {
     };
 
     if (this.apiLogEnabled) {
-      this.log(`Performing request: ${JSON.stringify(config)}`);
+      this.log.debug(`Performing request: ${JSON.stringify(config)}`);
     }
 
     const result = await axios(config).catch((err) => {
@@ -146,14 +146,14 @@ module.exports = class WyzeAPI {
     // if dumpData is enabled for everyone, sanitize the token for logging
     if (this.dumpData) {
       this.dumpData = false;
-      this.log(
+      this.log.debug(
         `API response PerformRequest: ${JSON.stringify(
           result.data,
           (key, val) => (key.includes("token") ? "*******" : val)
         )}`
       );
     } else if (this.apiLogEnabled) {
-      this.log(
+      this.log.debug(
         `API response PerformRequest: ${JSON.stringify({
           url,
           status: result.status,
@@ -180,12 +180,12 @@ module.exports = class WyzeAPI {
       if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
         const resetsIn =
           (rateLimitResetBy || new Date()).getTime() - new Date().getTime();
-        this.log(
+        this.log.debug(
           `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
         );
         await new Promise((resolve) => setTimeout(resolve, resetsIn));
       } else if (rateLimitRemaining && this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API rate limit remaining: ${rateLimitRemaining}. Expires in ${
             (rateLimitResetBy || new Date()).getTime() - new Date().getTime()
           }ms`
@@ -337,7 +337,7 @@ module.exports = class WyzeAPI {
         );
       }
       if (this.apiLogEnabled) {
-        this.log("Successfully logged into Wyze API");
+        this.log.debug("Successfully logged into Wyze API");
       }
       await this._updateTokens(result.data);
     }
@@ -351,15 +351,14 @@ module.exports = class WyzeAPI {
     if (!this.access_token) {
       let now = new Date().getTime();
       // check if the last login attempt occurred too recently
-      if (this.apiLogEnabled)
-        this.log(
+      if (this.apiLogEnabled) {
+        this.log.debug(
           "Last login " +
             this.lastLoginAttempt +
             " debounce " +
             this.loginAttemptDebounceMilliseconds +
             " now " +
-            now
-        );
+            now )};
       if (this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds < now) {
         // reset loginAttemptDebounceMilliseconds if last attempted login occurred more than 12 hours ago
         if (this.lastLoginAttempt - now > 60 * 1000 * 60 * 12) {
@@ -375,11 +374,11 @@ module.exports = class WyzeAPI {
         this.lastLoginAttempt = now;
         await this.login();
       } else {
-        this.log(
+        this.log.debug
           "Attempting to login before debounce has cleared, waiting " +
             this.loginAttemptDebounceMilliseconds / 1000 +
             " seconds"
-        );
+        
 
         let waitTime = 0;
         while (waitTime < this.loginAttemptDebounceMilliseconds) {
@@ -436,7 +435,7 @@ module.exports = class WyzeAPI {
     };
     const tokenPath = this._tokenPersistPath();
 
-    if (this.apiLogEnabled) this.log(`Persisting tokens @ ${tokenPath}`);
+    if (this.apiLogEnabled) this.log.debug(`Persisting tokens @ ${tokenPath}`);
     await fs.writeFile(tokenPath, JSON.stringify(data));
   }
 
@@ -447,7 +446,7 @@ module.exports = class WyzeAPI {
       this.access_token = data.access_token;
       this.refresh_token = data.refresh_token;
     } catch (e) {
-      if (this.apiLogEnabled) this.log("No persisted tokens found");
+      if (this.apiLogEnabled) this.log.debug("No persisted tokens found");
     }
   }
 
@@ -488,7 +487,7 @@ module.exports = class WyzeAPI {
     };
 
     if (this.apiLogEnabled)
-      this.log(`run_action Data Body: ${JSON.stringify(data)}`);
+      this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action", data);
     return result.data;
@@ -535,7 +534,7 @@ module.exports = class WyzeAPI {
     };
 
     if (this.apiLogEnabled)
-      this.log(`run_action_list Data Body: ${JSON.stringify(data)}`);
+      this.log.debug(`run_action_list Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action_list", data);
     return result.data;
@@ -560,7 +559,7 @@ module.exports = class WyzeAPI {
       const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
       const result = await axios.post(urlPath, payload);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response ControlLock: ${JSON.stringify(result.data)}`
         );
       }
@@ -602,7 +601,7 @@ module.exports = class WyzeAPI {
       const url = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/info";
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response GetLockInfo: ${JSON.stringify(result.data)}`
         );
       }
@@ -643,10 +642,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled)
-        this.log(
+        this.log.debug(
           `API response GetIotProp: ${JSON.stringify(result.data)}`
         );
       return result.data;
@@ -697,7 +696,7 @@ module.exports = class WyzeAPI {
         "https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic";
       const result = await axios.post(url, JSON.stringify(payload), config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response SetIotProp: ${JSON.stringify(result.data)}`
         );
       }
@@ -738,10 +737,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response GetUserProfile: ${JSON.stringify(result.data)}`
         );
       }
@@ -777,10 +776,10 @@ module.exports = class WyzeAPI {
     };
     try {
       const url = "https://hms.api.wyze.com/api/v1/reme-alarm";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.delete(url, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response DisableRemeAlarm: ${JSON.stringify(result.data)}`
         );
       }
@@ -818,10 +817,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response GetPlanBindingListByUser: ${JSON.stringify(
             result.data
           )}`
@@ -863,10 +862,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response MonitoringProfileStateStatus: ${JSON.stringify(
             result.data
           )}`
@@ -919,10 +918,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.patch(url, data, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response MonitoringProfileActive: ${JSON.stringify(result.data)}`
         );
       }
@@ -943,6 +942,7 @@ module.exports = class WyzeAPI {
 
   async thermostatGetIotProp(deviceMac) {
     await this.maybeLogin();
+    //calls /get_iot_prop on thermostat with keys temperature,humidity,iot_state,auto_comfort
     let keys =
       "trigger_off_val,emheat,temperature,humidity,time2temp_val,protect_time,mode_sys,heat_sp,cool_sp, current_scenario,config_scenario,temp_unit,fan_mode,iot_state,w_city_id,w_lat,w_lon,working_state, dev_hold,dev_holdtime,asw_hold,app_version,setup_state,wiring_logic_id,save_comfort_balance, kid_lock,calibrate_humidity,calibrate_temperature,fancirc_time,query_schedule";
     let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
@@ -962,10 +962,10 @@ module.exports = class WyzeAPI {
     try {
       const url =
         "https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`
         );
       }
@@ -986,6 +986,8 @@ module.exports = class WyzeAPI {
   }
 
   async thermostatSetIotProp(deviceMac, deviceModel, propKey, value) {
+    // This method is only used for updating the schedule and the resetting the filter(s) - basically
+    // anything that doesn't need to talk to the physical unit
     await this.maybeLogin();
     let payload = payloadFactory.oliveCreatePostPayload(
       deviceMac,
@@ -1001,7 +1003,7 @@ module.exports = class WyzeAPI {
       headers: {
         "Accept-Encoding": "gzip",
         "Content-Type": "application/json",
-        "User-Agent": "myapp",
+        "User-Agent": this.userAgent,
         appid: constants.oliveAppId,
         appinfo: constants.appInfo,
         phoneid: this.phoneId,
@@ -1015,7 +1017,7 @@ module.exports = class WyzeAPI {
         "https://wyze-earth-service.wyzecam.com/plugin/earth/set_iot_prop_by_topic";
       const result = await axios.post(url, JSON.stringify(payload), config);
       if (this.apiLogEnabled) {
-        this.log(
+        this.log.debug(
           `API response ThermostatSetIotProp: ${JSON.stringify(result.data)}`
         );
       }
@@ -1036,13 +1038,7 @@ module.exports = class WyzeAPI {
   }
 
   //Still needs work. Unable to get the Encrypt correct
-  async localBulbCommand(
-    deviceMac,
-    deviceEnr,
-    deviceIp,
-    propertyId,
-    propertyValue
-  ) {
+  async localBulbCommand(deviceModel, deviceMac, deviceEnr, deviceIp, propertyId, propertyValue) {
 
     const plist = [
       {
@@ -1054,36 +1050,369 @@ module.exports = class WyzeAPI {
     const characteristics = {
       "mac": deviceMac.toUpperCase(),
       "index": "1",
-      "ts": String(Math.floor(Date.now())),
+      "ts": new Date().getTime(),
       "plist": plist
   };
-
+  console.log(characteristics)
   const characteristicsStr = JSON.stringify(characteristics);
-  const characteristicsEnc = encrypt(deviceEnr, characteristicsStr);
+  console.log(characteristicsStr)
+  const characteristicsEnc = util.encrypt(deviceEnr, characteristicsStr);
+  console.log(characteristicsEnc)
   const payload = {
       "request": "set_status",
       "isSendQueue": 0,
       "characteristics": characteristicsEnc
   };
-  const payloadStr = JSON.stringify(payload).replace(/\\\\/g, '\\');
+  console.log(payload)
+  const payloadStr = JSON.stringify(payload);
+  console.log(payload)
   const url = `http://${deviceIp}:88/device_request`;
 
     try {
-      //const response = await fetch(url, { method: "POST",body: payload_str})
       let result = await axios.post(url, payloadStr);
+      console.log(result)
       if (this.apiLogEnabled)
-        this.log(`API response Local Bulb: ${result.data}`);
+        this.log.debug(`API response Local Bulb: ${result}`);
     } catch (error) {
+      console.log(error)
       this.log.error(error);
       this.log.error(
         `Failed to connect to bulb ${deviceMac}, reverting to cloud.`
       );
 
-      // await this.runActionList(bulb, plist)
+      //await this.runActionList(deviceMac,deviceModel,propertyId,propertyValue,'set_mesh_property')
     }
   }
 
-  /**
+  async vaccuumControl() {
+ //   kwargs.update({
+ //     'type': type.code,
+ //     'value': value.code,
+ //     'vacuumMopMode': 0,
+ // })
+  //if rooms is not None:
+    //  if not isinstance(rooms, (list, Tuple)):
+      //    rooms = [rooms]
+      //kwargs.update({"rooms_id": rooms})
+    //self.api_call(f'/plugin/venus/{did}/control', http_verb="POST", json=kwargs)
+  }
+
+  async vaccuumGetMaps(deviceMac) {
+    await this.maybeLogin();
+    let payload = payloadFactory.venusCreateGetPayload(deviceMac);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = "https://wyze-venus-service-vn.wyzecam.com/plugin/venus/memory_map/list";
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled)
+        this.log.debug(
+          `API response vaccuumGetMaps: ${JSON.stringify(result.data)}`
+        );
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response vaccuumGetMaps (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
+      }
+      throw e;
+    }
+    //kwargs.update({'did': did})
+    //return self.api_call('/plugin/venus/memory_map/list', http_verb="GET", params=kwargs)
+  }
+  
+  async vaccuumGetCurrentPosition(deviceMac){
+    await this.maybeLogin();
+    let payload = payloadFactory.venusCreateGetPayload(deviceMac);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = "https://wyze-venus-service-vn.wyzecam.com/plugin/venus/memory_map/current_position";
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled)
+        this.log.debug(
+          `API response vaccuumGetCurrentPosition: ${JSON.stringify(result.data)}`
+        );
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response vaccuumGetCurrentPosition (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async vaccuumGetCurrentMap(deviceMac){
+    await this.maybeLogin();
+    let payload = payloadFactory.venusCreateGetPayload(deviceMac);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = "https://wyze-venus-service-vn.wyzecam.com/plugin/venus/memory_map/current_map";
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled)
+        this.log.debug(
+          `API response vaccuumGetCurrentMap: ${JSON.stringify(result.data)}`
+        );
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response vaccuumGetCurrentMap (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
+      }
+      throw e;
+    }
+    //return self.api_call('/plugin/venus/memory_map/current_map', http_verb="GET", params=kwargs)
+  }
+  //Not fully working
+  async vaccuumSetCurrentMap(deviceMac,mapID){
+    await this.maybeLogin();
+    let payload = payloadFactory.venusCreateSetCurrentMapPayload(deviceMac,mapID);
+    let signature = crypto.oliveCreateSignatureSingle(
+      JSON.stringify(payload),
+      this.access_token
+    );
+
+    const config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "Content-Type": "application/json",
+        "User-Agent": "myapp",
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+    };
+
+    try {
+      const url =
+        "https://wyze-venus-service-vn.wyzecam.com/plugin/venus/memory_map/current_map";
+      const result = await axios.post(url, JSON.stringify(payload), config);
+      if (this.apiLogEnabled) {
+        this.log.debug(
+          `API response vaccuumSetCurrentMap: ${JSON.stringify(result.data)}`
+        );
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+      if (e.response) {
+        this.log.error(
+          `Response vaccuumSetCurrentMap (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
+      }
+      throw e;
+    }
+    //        kwargs.update({'device_id': did, 'map_id': map_id})
+    //        return self.api_call('/plugin/venus/memory_map/current_map', http_verb="POST", json=kwargs)
+  }
+
+  async vaccuumGetSweepRecords(deviceMac) {
+    await this.maybeLogin();
+    let payload = payloadFactory.venusCreateSweepRecordsPayload(deviceMac,20);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = "https://wyze-venus-service-vn.wyzecam.com/plugin/venus/sweep_record/query_data";
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled)
+        this.log.debug(
+          `API response vaccuumGetSweepRecords: ${JSON.stringify(result.data)}`
+        );
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response vaccuumGetSweepRecords (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async vaccuumGetDeviceInfo(did, keys){
+    //      if isinstance(keys, (list, Tuple)):
+   //       kwargs.update({"keys": ",".join(keys)})
+   //   else:
+   //       kwargs.update({"keys": keys})
+   //   kwargs.update({'device_id': did})
+    //  return self.api_call('/plugin/venus/device_info', http_verb="GET", params=kwargs)
+  }
+
+  async vaccuumGetIotProp(did, keys) {
+ //     if isinstance(keys, (list, Tuple)):
+ //     kwargs.update({"keys": ",".join(keys)})
+ // else:
+ //     kwargs.update({"keys": keys})
+ // kwargs.update({'did': did})
+  //return self.api_call('/plugin/venus/get_iot_prop', http_verb="GET", params=kwargs)
+  }
+  async vaccuumGetStatus(deviceMac){
+    await this.maybeLogin();
+    let payload = payloadFactory.venusCreateGetPayload(deviceMac);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = "https://wyze-venus-service-vn.wyzecam.com/plugin/venus/" +deviceMac +"/status";
+      if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled)
+        this.log.debug(
+          `API response vaccuumGetStatus: ${JSON.stringify(result.data)}`
+        );
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response vaccuumGetStatus (${e.response.statusText}): ${JSON.stringify(
+            e.response.data,
+            null,
+            "\t"
+          )}`
+        );
+      }
+      throw e;
+    }
+    //        return self.api_call(f'/plugin/venus/{did}/status', http_verb="GET", params=kwargs)
+  }
+
+  async vaccuumSetIotAction(did, model,cmd,params){
+   //         if isinstance(params, (list, Tuple)):
+   //         kwargs.update({"params": params})
+   //     else:
+   //         kwargs.update({"params": [params]})
+   //     kwargs.update({
+  //          'cmd': cmd,
+   //         'did': did,
+   //         'model': model,
+   //         'is_sub_device': 1 if is_sub_device else 0,
+   //     })
+   //     return self.api_call('/plugin/venus/set_iot_action', http_verb="POST", json=kwargs)
+  }
+
+  async vaccuumCreateEvent(){
+   // kwargs.update({
+   //   'uuid': '88DBF3344D20B5597DB7C8F0AFBB4030',
+   //   'deviceId': did,
+   //   'createTime': str(self.request_verifier.clock.nonce()),
+   //   'mcuSysVersion': self.WYZE_VACUUM_FIRMWARE_VERSION,
+   //   'appVersion': self.app_version,
+   //  'pluginVersion': self.WYZE_VENUS_PLUGIN_VERSION,
+   //   'phoneId': self.phone_id,
+    // 'phoneOsVersion': '16.0',
+   //   'eventKey': type.description,
+   ///   'eventType': value.code,
+  //})
+  //if args is not None:
+    //  if not isinstance(args, (list, Tuple)):
+      //    args = [args]
+      //for index, item in enumerate(args):
+        //  kwargs.update({
+          //    f'arg{index + 1}': item
+          //})
+  //kwargs.update({
+  //    "arg11": "ios",
+  ///    "arg12": "iPhone 13 mini",
+  //})
+  //return self.api_call('/plugin/venus/event_tracking', http_verb="POST", json=kwargs)
+  }
+   /**
    * Helper functions
    */
 

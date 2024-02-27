@@ -21,16 +21,17 @@
   "author": "Allen Farmer",
   "license": "MIT",
   "dependencies": {
-    "axios": "1.5.0",
+    "axios": "1.6.7",
     "moment": "2.29.4",
     "urllib": "3.18.0",
-    "crypto-js": "4.1.1",
+    "crypto-js": "4.2.0",
     "utf8": "3.0.0",
     "colorsys": "^1.0.22",
     "base64-js": "1.5.1",
     "querystring": "0.2.1",
     "uuid-by-string": "4.0.0",
-    "@ptkdev/logger": "1.8.0"
+    "@ptkdev/logger": "1.8.0",
+    "crypto": "1.0.1"
   },
   "funding": [
     {

@@ -1,35 +1,35 @@
-const crypto = require("crypto-js");
+const crypto = require("crypto");
 
 const PADDING = Buffer.from("05", "hex");
 
 function pad(plainText) {
-    const raw = Buffer.from(plainText, "ascii");
-    const padNum = 16 - (raw.length % 16);
-    const paddedRaw = Buffer.concat([raw, PADDING.repeat(padNum)]);
-    return paddedRaw;
+    let raw = Buffer.from(plainText, 'ascii');
+    let padNum = 16 - (raw.length % 16);
+    raw = Buffer.concat([raw, Buffer.alloc(padNum, PADDING)]);
+    return raw;
 }
 
 function encrypt(key, text) {
-    const raw = pad(text);
-    const keyBuffer = Buffer.from(key, "ascii");
-    const iv = keyBuffer;
-    const cipher = crypto.createCipheriv('aes-128-cbc', keyBuffer, iv);
-    let enc = cipher.update(raw);
-    enc = Buffer.concat([enc, cipher.final()]);
-    let b64Enc = enc.toString('base64');
-    b64Enc = b64Enc.replace(/\//g, '\\/');
+    let raw = pad(text);
+    let iv = Buffer.from(key, 'ascii'); // Wyze uses the secret key for the iv as well
+    let cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
+    console.log(cipher)
+    let enc = cipher.update(raw, 'utf-8', 'base64') //+ cipher.final('base64');
+    console.log(enc)
+    let b64Enc = enc.replace("/", '\/');
+    console.log(b64Enc)
     return b64Enc;
 }
 
 function decrypt(key, enc) {
-  const encBuffer = Buffer.from(enc, 'base64');
-  const keyBuffer = Buffer.from(key, 'ascii');
-  const iv = keyBuffer;
-  const decipher = crypto.createDecipheriv('aes-128-cbc', keyBuffer, iv);
-  let decrypted = decipher.update(encBuffer);
-  decrypted = Buffer.concat([decrypted, decipher.final()]);
-  return decrypted.toString('ascii');
+    const keyUtf8 = CryptoJS.enc.Utf8.parse(key);
+    const iv = keyUtf8;
+    const encrypted = CryptoJS.enc.Base64.parse(enc).toString(CryptoJS.enc.Utf8);
+    const decrypted = CryptoJS.AES.decrypt(encrypted, keyUtf8, { iv: iv }).toString(CryptoJS.enc.Utf8);
+    return decrypted;
 }
+
+
 
 function createPassword(password) {
   const hex1 = crypto.MD5(password).toString();

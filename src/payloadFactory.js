@@ -52,10 +52,33 @@ function oliveCreateHmsGetPayload(hms_id) {
     nonce: Date.now().toString(),
   };
 }
+
 function oliveCreateHmsPatchPayload(hms_id) {
   return {
     hms_id: hms_id,
   };
+}
+
+function venusCreateSetCurrentMapPayload(device_mac, mapId) {
+  return {
+    did: device_mac,
+    map_id: mapId
+  }
+}
+
+function venusCreateSweepRecordsPayload(device_mac, limit) {
+  return {
+    did: device_mac,
+    purpose: 'history_map',
+    count: limit,
+    last_time: Date.now().toString()
+  }
+}
+
+function venusCreateGetPayload(device_mac) {
+  return {
+    did: device_mac
+  }
 }
 
 module.exports = {
@@ -66,4 +89,7 @@ module.exports = {
   oliveCreateUserInfoPayload,
   oliveCreateHmsGetPayload,
   oliveCreateHmsPatchPayload,
+  venusCreateSetCurrentMapPayload,
+  venusCreateSweepRecordsPayload,
+  venusCreateGetPayload
 };
