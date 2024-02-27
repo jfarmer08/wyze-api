@@ -32,30 +32,14 @@ async function loginCheck(iterations = 2) {
     count += 1;
   }
 }
-function stringify(obj) {
-  let cache = [];
-  let str = JSON.stringify(obj, function(key, value) {
-    if (typeof value === "object" && value !== null) {
-      if (cache.indexOf(value) !== -1) {
-        // Circular reference found, discard key
-        return;
-      }
-      // Store value in our collection
-      cache.push(value);
-    }
-    return value;
-  });
-  cache = null; // reset the cache
-  return str;
-}
 
 async function deviceListCheck() {
   //const devices = await wyze.getDeviceByMac('7C78B2OA4ECO')
   const devices = await wyze.getDeviceByName('Bob')
   logger.debug(JSON.stringify(devices));
-  const cleaner = await wyze.vaccuumSetCurrentMap(devices.mac,'1692370395')
+  const cleaner = await wyze.setVacuumCleanStart(devices.mac)
   //const bulb = await wyze.localBulbCommand(devices.product_model,devices.mac,devices.enr,devices.device_params.ip, "P3", "1")
-  logger.debug(stringify(cleaner));
+  logger.debug(JSON.stringify(cleaner));
 }
 
 (async () => {

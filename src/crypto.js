@@ -19,7 +19,7 @@ function fordCreateSignature(url_path, request_method, data) {
     return dig
 }
 
-function oliveCreateSignatureSingle(payload, access_token) {
+function createSignatureSingle(payload, access_token) {
     let access_key = access_token + constants.oliveSigningSecret
     let secret = crypto.createHash('md5').update(utf8.encode(access_key))
     let secrestDig = secret.digest('hex')
@@ -28,7 +28,7 @@ function oliveCreateSignatureSingle(payload, access_token) {
     return digest
 }
 
-function oliveCreateSignature(payload, access_token) {
+function createSignature(payload, access_token) {
     let body = '';
     let keys = Object.keys(payload).sort()
     for (var i = 0; i < keys.length; i++) { // now lets iterate in sort order
@@ -46,8 +46,36 @@ function oliveCreateSignature(payload, access_token) {
     return digest
 }
 
+function createVenusSignatureSingle(payload, access_token) {
+    let access_key = access_token + constants.venusSigningSecret
+    let secret = crypto.createHash('md5').update(utf8.encode(access_key))
+    let secrestDig = secret.digest('hex')
+    let hmac = crypto.createHmac("md5", utf8.encode(secrestDig)).update(utf8.encode(payload), crypto.md5)
+    let digest = hmac.digest('hex')
+    return digest
+}
+function createVenusSignature(payload, access_token) {
+    let body = '';
+    let keys = Object.keys(payload).sort()
+    for (var i = 0; i < keys.length; i++) { // now lets iterate in sort order
+        var key = keys[i];
+        var value = payload[key];
+        body += key + '=' + String(value) + '&';
+    }
+
+    body = body.slice(0, -1)
+    let access_key = access_token + constants.venusSigningSecret
+    let secret = crypto.createHash('md5').update(utf8.encode(access_key))
+    let secrestDig = secret.digest('hex')
+    let hmac = crypto.createHmac("md5", utf8.encode(secrestDig)).update(utf8.encode(body), crypto.md5)
+    let digest = hmac.digest('hex')
+    return digest
+}
+
 module.exports = {
     fordCreateSignature,
-    oliveCreateSignatureSingle,
-    oliveCreateSignature,
+    createSignatureSingle,
+    createSignature,
+    createVenusSignatureSingle,
+    createVenusSignature,
 }
