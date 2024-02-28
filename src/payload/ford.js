@@ -15,5 +15,5 @@ function fordCreatePayload(access_token, payload, url_path, request_method) {
   return payload;
 }
 module.exports = {
-  fordCreatePayload
-}
+  fordCreatePayload,
+};

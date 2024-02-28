@@ -46,8 +46,6 @@ function oliveCreateHmsPatchPayload(hms_id) {
   };
 }
 
-
-
 module.exports = {
   oliveCreateGetPayload,
   oliveCreatePostPayload,
