@@ -59,6 +59,8 @@ module.exports = class WyzeAPI {
     this.lastLoginAttempt = 0;
     this.loginAttemptDebounceMilliseconds = 1000;
 
+ 
+
     // Token is good for 216,000 seconds (60 hours) but 48 hours seems like a reasonable refresh interval 172800
     if (this.refreshTokenTimerEnabled === true) {
       setInterval(this.refreshToken.bind(this), 172800);
@@ -564,7 +566,12 @@ module.exports = class WyzeAPI {
       const result = await axios.post(urlPath, payload);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response ControlLock: ${JSON.stringify(result.data)}`
+          `API response: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
       return result.data;
@@ -606,7 +613,12 @@ module.exports = class WyzeAPI {
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response GetLockInfo: ${JSON.stringify(result.data)}`
+          `API response: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
       return result.data;
@@ -649,9 +661,14 @@ module.exports = class WyzeAPI {
       if (this.apiLogEnabled) this.log.debug(`Performing request: ${url}`);
       const result = await axios.get(url, config);
       if (this.apiLogEnabled)
-        this.log.debug(
-          `API response GetIotProp: ${JSON.stringify(result.data)}`
-        );
+      this.log.debug(
+        `API response: ${JSON.stringify({
+          url,
+          status: result.status,
+          data: result.data,
+          headers: result.headers,
+        })}`
+      );
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e}`);
@@ -701,7 +718,12 @@ module.exports = class WyzeAPI {
       const result = await axios.post(url, JSON.stringify(payload), config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response SetIotProp: ${JSON.stringify(result.data)}`
+          `API response: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
 
@@ -745,7 +767,12 @@ module.exports = class WyzeAPI {
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response GetUserProfile: ${JSON.stringify(result.data)}`
+          `API response MonitoringProfileActive: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
 
@@ -784,7 +811,12 @@ module.exports = class WyzeAPI {
       const result = await axios.delete(url, config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response DisableRemeAlarm: ${JSON.stringify(result.data)}`
+          `API response MonitoringProfileActive: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
       return result.data;
@@ -825,9 +857,12 @@ module.exports = class WyzeAPI {
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response GetPlanBindingListByUser: ${JSON.stringify(
-            result.data
-          )}`
+          `API response MonitoringProfileActive: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
 
@@ -870,10 +905,14 @@ module.exports = class WyzeAPI {
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response MonitoringProfileStateStatus: ${JSON.stringify(
-            result.data
-          )}`
+          `API response MonitoringProfileActive: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
+        
       }
       return result.data;
     } catch (e) {
@@ -926,7 +965,12 @@ module.exports = class WyzeAPI {
       const result = await axios.patch(url, data, config);
       if (this.apiLogEnabled) {
         this.log.debug(
-          `API response MonitoringProfileActive: ${JSON.stringify(result.data)}`
+          `API response MonitoringProfileActive: ${JSON.stringify({
+            url,
+            status: result.status,
+            data: result.data,
+            headers: result.headers,
+          })}`
         );
       }
       return result.data;
