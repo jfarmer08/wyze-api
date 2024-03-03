@@ -21,7 +21,7 @@
   "license": "MIT",
   "dependencies": {
     "@ptkdev/logger": "1.8.0",
-    "axios": "^0.28.0",
+    "axios": "^1.6.0",
     "dotenv": "^16.4.1",
     "wyze-api": "^1.1.5"
   }
