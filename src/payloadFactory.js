@@ -1,21 +1,19 @@
-let constants = require("./constants");
-let crypto = require("./crypto");
+const constants = require("./constants");
+const crypto = require("./crypto");
 
 function fordCreatePayload(access_token, payload, url_path, request_method) {
-  payload["accessToken"] = access_token;
-  payload["key"] = constants.fordAppKey;
-  payload["timestamp"] = Date.now().toString();
-  payload["sign"] = crypto.fordCreateSignature(
-    url_path,
-    request_method,
-    payload
-  );
-  return payload;
+  return {
+    ...payload,
+    accessToken: access_token,
+    key: constants.fordAppKey,
+    timestamp: Date.now().toString(),
+    sign: crypto.fordCreateSignature(url_path, request_method, payload),
+  };
 }
 
 function oliveCreateGetPayload(device_mac, keys) {
   return {
-    keys: keys,
+    keys,
     did: device_mac,
     nonce: Date.now().toString(),
   };
@@ -48,13 +46,14 @@ function oliveCreateUserInfoPayload() {
 
 function oliveCreateHmsGetPayload(hms_id) {
   return {
-    hms_id: hms_id,
+    hms_id,
     nonce: Date.now().toString(),
   };
 }
+
 function oliveCreateHmsPatchPayload(hms_id) {
   return {
-    hms_id: hms_id,
+    hms_id,
   };
 }
 
