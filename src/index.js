@@ -557,41 +557,39 @@ module.exports = class WyzeAPI {
 
   async controlLock(deviceMac, deviceModel, action) {
     await this.maybeLogin();
-    let path = "/openapi/lock/v1/control";
+
+    const path = "/openapi/lock/v1/control";
+    const uuid = this.getUuid(deviceMac, deviceModel);
     let payload = {
-      uuid: this.getUuid(deviceMac, deviceModel),
-      action, // "remoteLock" or "remoteUnlock"
+        uuid,
+        action, // "remoteLock" or "remoteUnlock"
     };
 
     try {
-      payload = payloadFactory.fordCreatePayload(
-        this.access_token,
-        payload,
-        path,
-        "post"
-      );
-
-      const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
-      const result = await axios.post(urlPath, payload);
-      if (this.apiLogEnabled) {
-        this.log(
-          `API response ControlLock: ${JSON.stringify(result.data)}`
+        // Generate payload using the payloadFactory
+        payload = payloadFactory.fordCreatePayload(
+            this.access_token,
+            payload,
+            path,
+            "post"
         );
-      }
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
-        this.log.error(
-          `Response ControLock (${e.response.statusText}): ${JSON.stringify(
-            e.response.data,
-            null,
-            "\t"
-          )}`
-        );
-      }
-      throw e;
+        const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
+        const result = await axios.post(urlPath, payload);
+
+        if (this.apiLogEnabled) {
+            this.log(`API response ControlLock: ${JSON.stringify(result.data)}`);
+        }
+
+        return result.data;
+    } catch (error) {
+        this.log.error(`Request failed: ${error.message}`);
+
+        if (error.response) {
+            this.log.error(`Response ControlLock (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
+        }
+
+        throw error;
     }
   }
 
