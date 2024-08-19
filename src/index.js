@@ -363,62 +363,74 @@ module.exports = class WyzeAPI {
 
   async maybeLogin() {
     if (!this.access_token) {
-      await this._loadPersistedTokens();
+        await this._loadPersistedTokens();
     }
 
-    if (!this.access_token) {
-      let now = new Date().getTime();
-      // check if the last login attempt occurred too recently
-      if (this.apiLogEnabled)
-        this.log(
-          "Last login " +
-            this.lastLoginAttempt +
-            " debounce " +
-            this.loginAttemptDebounceMilliseconds +
-            " now " +
-            now
-        );
-      if (this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds < now) {
-        // reset loginAttemptDebounceMilliseconds if last attempted login occurred more than 12 hours ago
-        if (this.lastLoginAttempt - now > 60 * 1000 * 60 * 12) {
-          this.loginAttemptDebounceMilliseconds = 1000;
-        } else {
-          // max debounce of 5 minutes
-          this.loginAttemptDebounceMilliseconds = Math.min(
-            this.loginAttemptDebounceMilliseconds * 2,
-            1000 * 60 * 5
-          );
-        }
+    if (this.access_token) {
+        return;
+    }
 
-        this.lastLoginAttempt = now;
-        await this.login();
-      } else {
-        this.log(
-          "Attempting to login before debounce has cleared, waiting " +
-            this.loginAttemptDebounceMilliseconds / 1000 +
-            " seconds"
-        );
+    const now = Date.now();
+    this.logDebounceInfo(now);
 
-        let waitTime = 0;
-        while (waitTime < this.loginAttemptDebounceMilliseconds) {
-          await this.sleep(2);
-          waitTime = waitTime + 2000;
-          if (this.access_token) {
-            break;
-          }
-        }
-
+    if (this.isDebounceCleared(now)) {
+        this.resetDebounceIfNeeded(now);
+        await this.tryLogin(now);
+    } else {
+        await this.waitForDebounceClearance(now);
         if (!this.access_token) {
-          this.lastLoginAttempt = now;
-          this.loginAttemptDebounceMilliseconds = Math.min(
-            this.loginAttemptDebounceMilliseconds * 2,
-            1000 * 60 * 5
-          );
-          await this.login();
+            this.updateDebounceAndLogin(now);
         }
-      }
     }
   }
+
+  logDebounceInfo(now) {
+      if (this.apiLogEnabled) {
+          this.log(
+              `Last login: ${this.lastLoginAttempt}, Debounce: ${this.loginAttemptDebounceMilliseconds}, Now: ${now}`
+          );
+      }
+  }
+
+  isDebounceCleared(now) {
+      return this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds < now;
+  }
+
+  resetDebounceIfNeeded(now) {
+      if (now - this.lastLoginAttempt > 60 * 1000 * 60 * 12) {
+          this.loginAttemptDebounceMilliseconds = 1000;
+      }
+  }
+
+  async tryLogin(now) {
+      this.lastLoginAttempt = now;
+      await this.login();
+  }
+
+  async waitForDebounceClearance(now) {
+      this.log(
+          `Attempting to login before debounce has cleared, waiting ${this.loginAttemptDebounceMilliseconds / 1000} seconds`
+      );
+
+      let waitTime = 0;
+      while (waitTime < this.loginAttemptDebounceMilliseconds) {
+          await this.sleep(2000);
+          waitTime += 2000;
+          if (this.access_token) {
+              break;
+          }
+      }
+  }
+
+  async updateDebounceAndLogin(now) {
+      this.lastLoginAttempt = now;
+      this.loginAttemptDebounceMilliseconds = Math.min(
+          this.loginAttemptDebounceMilliseconds * 2,
+          1000 * 60 * 5
+      );
+      await this.login();
+  }
+
 
   async refreshToken() {
     const data = {
