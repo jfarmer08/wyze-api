@@ -1047,54 +1047,52 @@ module.exports = class WyzeAPI {
     }
   }
 
-  //Still needs work. Unable to get the Encrypt correct
-  async localBulbCommand(
-    deviceMac,
-    deviceEnr,
-    deviceIp,
-    propertyId,
-    propertyValue
-  ) {
+  
+  async localBulbCommand(deviceMac, deviceModel, deviceEnr, deviceIp, propertyId, propertyValue, actionKey) {
 
     const plist = [
-      {
-        pid: propertyId,
-        pvalue: String(propertyValue),
-      },
+      { pid: propertyId, pvalue: String(propertyValue) }
     ];
 
     const characteristics = {
-      "mac": deviceMac.toUpperCase(),
-      "index": "1",
-      "ts": String(Math.floor(Date.now())),
-      "plist": plist
-  };
+        mac: deviceMac.toUpperCase(),
+        index: '1',
+        ts: moment().valueOf(), // current timestamp in milliseconds
+        plist: plist
+    };
 
-  const characteristicsStr = JSON.stringify(characteristics);
-  const characteristicsEnc = encrypt(deviceEnr, characteristicsStr);
-  const payload = {
-      "request": "set_status",
-      "isSendQueue": 0,
-      "characteristics": characteristicsEnc
-  };
-  const payloadStr = JSON.stringify(payload).replace(/\\\\/g, '\\');
-  const url = `http://${deviceIp}:88/device_request`;
+    const characteristicsStr = JSON.stringify(characteristics, null, 0);
+    const characteristicsEnc = util.wyzeEncrypt(deviceEnr, characteristicsStr);
+
+    const payload = {
+        request: 'set_status',
+        isSendQueue: 0,
+        characteristics: characteristicsEnc
+    };
+
+    // Convert payload to a JSON string and replace '\\\\' with '\'
+    const payloadStr = JSON.stringify(payload, null, 0).replace(/\\\\/g, '\\');
+
+    const url = `http://${deviceIp}:88/device_request`;
 
     try {
-      //const response = await fetch(url, { method: "POST",body: payload_str})
-      let result = await axios.post(url, payloadStr);
-      if (this.apiLogEnabled)
-        this.log(`API response Local Bulb: ${result.data}`);
+        const response = await axios.post(url, payloadStr, {
+            headers: { 'Content-Type': 'application/json' }
+        });
+        console.log(response.data);
     } catch (error) {
-      this.log.error(error);
-      this.log.error(
-        `Failed to connect to bulb ${deviceMac}, reverting to cloud.`
-      );
-
-      // await this.runActionList(bulb, plist)
+        if (error.response) {
+            // Handle HTTP error
+            console.warn(`Failed to connect to bulb ${deviceMac}, reverting to cloud.`);
+            // Call your fallback function here
+            await runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey)
+            bulb.cloudFallback = true;
+        } else {
+            // Handle other errors
+            console.error(error);
+        }
     }
   }
-
   /**
    * Helper functions
    */
@@ -1103,54 +1101,48 @@ module.exports = class WyzeAPI {
     return deviceMac.replace(`${deviceModel}.`, "");
   }
 
-  async getObjects() {
-    const result = await this.getObjectList();
-    return result;
+  async getObjectListSafe() {
+      try {
+          return await this.getObjectList();
+      } catch (error) {
+          this.log.error(`Failed to get object list: ${error.message}`);
+          throw error;
+      }
   }
 
   async getDeviceList() {
-    const result = await this.getObjectList();
-    return result.data.device_list;
+      const result = await this.getObjectListSafe();
+      return result.data.device_list || [];
   }
 
   async getDeviceByName(nickname) {
-    const result = await this.getDeviceList();
-    const device = result.find(
-      (device) => device.nickname.toLowerCase() === nickname.toLowerCase()
-    );
-    return device;
+      const devices = await this.getDeviceList();
+      return devices.find(device => device.nickname.toLowerCase() === nickname.toLowerCase());
   }
 
   async getDeviceByMac(mac) {
-    const result = await this.getDeviceList();
-    const device = result.find((device) => device.mac === mac);
-    return device;
+      const devices = await this.getDeviceList();
+      return devices.find(device => device.mac === mac);
   }
 
   async getDevicesByType(type) {
-    const result = await this.getDeviceList();
-    const devices = result.filter(
-      (device) => device.product_type.toLowerCase() === type.toLowerCase()
-    );
-    return devices;
+      const devices = await this.getDeviceList();
+      return devices.filter(device => device.product_type.toLowerCase() === type.toLowerCase());
   }
 
   async getDevicesByModel(model) {
-    const result = await this.getDeviceList();
-    const devices = result.filter(
-      (device) => device.product_model.toLowerCase() === model.toLowerCase()
-    );
-    return devices;
+      const devices = await this.getDeviceList();
+      return devices.filter(device => device.product_model.toLowerCase() === model.toLowerCase());
   }
 
   async getDeviceGroupsList() {
-    const result = await this.getObjectList();
-    return result.data.device_group_list;
+      const result = await this.getObjectListSafe();
+      return result.data.device_group_list || [];
   }
 
   async getDeviceSortList() {
-    const result = await this.getObjectList();
-    return result.data.device_sort_list;
+      const result = await this.getObjectListSafe();
+      return result.data.device_sort_list || [];
   }
 
   async getDeviceStatus(device) {
@@ -1617,6 +1609,12 @@ module.exports = class WyzeAPI {
       return value;
     }
   }
+  
+  checkLowBattery(batteryVolts) {
+    if (this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {
+      return 1;
+    } else return 0;
+  }
 
   rangeToFloat(value, min, max) {
     return (value - min) / (max - min);
@@ -1642,12 +1640,6 @@ module.exports = class WyzeAPI {
     } else {
       return color;
     }
-  }
-
-  checkLowBattery(batteryVolts) {
-    if (this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {
-      return 1;
-    } else return 0;
   }
 
   fahrenheit2celsius(fahrenheit) {
