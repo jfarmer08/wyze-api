@@ -524,48 +524,32 @@ module.exports = class WyzeAPI {
     return result.data;
   }
 
-  async runActionList(
-    deviceMac,
-    deviceModel,
-    propertyId,
-    propertyValue,
-    actionKey
-  ) {
+  async runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey) {
     const plist = [
-      {
-        pid: propertyId,
-        pvalue: String(propertyValue),
-      },
+        { pid: propertyId, pvalue: String(propertyValue) }
     ];
+
+    // Add default property if not already P3
     if (propertyId !== "P3") {
-      plist.push({
-        pid: "P3",
-        pvalue: "1",
-      });
+        plist.push({ pid: "P3", pvalue: "1" });
     }
-    const innerList = [
-      {
-        mac: deviceMac,
-        plist,
-      },
-    ];
-    const actionParams = {
-      list: innerList,
-    };
-    const actionList = [
-      {
-        instance_id: deviceMac,
-        action_params: actionParams,
-        provider_key: deviceModel,
-        action_key: actionKey,
-      },
-    ];
+
     const data = {
-      action_list: actionList,
+        action_list: [
+            {
+                instance_id: deviceMac,
+                action_params: {
+                    list: [{ mac: deviceMac, plist }]
+                },
+                provider_key: deviceModel,
+                action_key: actionKey
+            }
+        ]
     };
 
-    if (this.apiLogEnabled)
-      this.log(`run_action_list Data Body: ${JSON.stringify(data)}`);
+    if (this.apiLogEnabled) {
+        this.log(`runActionList Request Data: ${JSON.stringify(data)}`);
+    }
 
     const result = await this.request("app/v2/auto/run_action_list", data);
     return result.data;
