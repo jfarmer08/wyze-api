@@ -109,191 +109,209 @@ module.exports = class WyzeAPI {
   }
 
   async _performRequest(url, data = {}, config = {}) {
+    // Prepare the request configuration
     config = {
-      method: "POST",
-      url,
-      data,
-      baseURL: this.apiBaseUrl,
-      ...config,
+        method: "POST",
+        url,
+        data,
+        baseURL: this.apiBaseUrl,
+        ...config,
     };
 
+    // Log the request if API logging is enabled
     if (this.apiLogEnabled) {
-      this.log(`Performing request: ${JSON.stringify(config)}`);
+        this.log(`Performing request: ${JSON.stringify(config)}`);
     }
 
-    const result = await axios(config).catch((err) => {
-      if (err.response) {
-        this.log.error(
-          `Request Failed: ${JSON.stringify({
-            url,
-            status: err.response.status,
-            data: err.response.data,
-            headers: err.response.headers,
-          })}`
-        );
-      } else {
-        this.log.error(
-          `Request Failed: ${JSON.stringify({
-            url,
-            message: err.message,
-          })}`
-        );
-      }
-
-      throw err;
-    });
-
-    // if dumpData is enabled for everyone, sanitize the token for logging
-    if (this.dumpData) {
-      this.dumpData = false;
-      this.log(
-        `API response PerformRequest: ${JSON.stringify(
-          result.data,
-          (key, val) => (key.includes("token") ? "*******" : val)
-        )}`
-      );
-    } else if (this.apiLogEnabled) {
-      this.log(
-        `API response PerformRequest: ${JSON.stringify({
-          url,
-          status: result.status,
-          data: result.data,
-          headers: result.headers,
-        })}`
-      );
-    }
-
-    // check for rate limiting - "x-ratelimit-remaining" | "x-ratelimit-reset-by"
-    // headers point to 20 requests / 10 minutes / 600 seconds // 600000 milliseconds for auth requests &
-    // 300 requests / 5 minutes / 300 seconds // 300000 milliseconds for others
+    let result;
     try {
-      // "x-ratelimit-remaining":"293",
-      const rateLimitRemaining = result.headers["x-ratelimit-remaining"]
-        ? Number(result.headers["x-ratelimit-remaining"])
-        : undefined;
-
-      // "x-ratelimit-reset-by":"Wed Feb 14 05:02:01 GMT 2024"
-      const rateLimitResetBy = result.headers["x-ratelimit-reset-by"]
-        ? new Date(result.headers["x-ratelimit-reset-by"])
-        : undefined;
-
-      if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
-        const resetsIn =
-          (rateLimitResetBy || new Date()).getTime() - new Date().getTime();
-        this.log(
-          `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
-        );
-        await new Promise((resolve) => setTimeout(resolve, resetsIn));
-      } else if (rateLimitRemaining && this.apiLogEnabled) {
-        this.log(
-          `API rate limit remaining: ${rateLimitRemaining}. Expires in ${
-            (rateLimitResetBy || new Date()).getTime() - new Date().getTime()
-          }ms`
-        );
-      }
+        result = await axios(config);
     } catch (err) {
-        this.log.error(`Error checking rate limit: ${err}`);
+        this._handleRequestError(err, url);
+        throw err;
     }
 
-    // 1 is reserved for success. If the code is not 1, treat as an error
-    if (
-      "code" in result.data &&
-      (typeof result.data.code === "string" ||
-        typeof result.data.code === "number") &&
-      Number(result.data.code) !== 1
-    ) {
-      const code = Number(result.data.code); // can be wrapped in a string
-      const errorMessage = `${
-        result.data.msg || result.data.description || "Unknown Wyze API Error"
-      }`;
-      this.log.error(`Wyze API Error (${code}): '${errorMessage}'`);
+    // Handle logging of response data
+    this._logApiResponse(result, url);
 
-      // code 1000 is related to user account along with some other messages
-      if (
-        [
+    // Check and handle API rate limiting
+    await this._checkRateLimit(result.headers);
+
+    // Handle API errors based on the response code
+    return this._handleApiResponse(result, url, data);
+  }
+
+  _handleRequestError(err, url) {
+      if (err.response) {
+          this.log.error(
+              `Request Failed: ${JSON.stringify({
+                  url,
+                  status: err.response.status,
+                  data: err.response.data,
+                  headers: err.response.headers,
+              })}`
+          );
+      } else {
+          this.log.error(
+              `Request Failed: ${JSON.stringify({
+                  url,
+                  message: err.message,
+              })}`
+          );
+      }
+  }
+
+  _logApiResponse(result, url) {
+      if (this.dumpData) {
+          this.dumpData = false;
+          this.log(
+              `API response PerformRequest: ${JSON.stringify(
+                  result.data,
+                  (key, val) => (key.includes("token") ? "*******" : val)
+              )}`
+          );
+      } else if (this.apiLogEnabled) {
+          this.log(
+              `API response PerformRequest: ${JSON.stringify({
+                  url,
+                  status: result.status,
+                  data: result.data,
+                  headers: result.headers,
+              })}`
+          );
+      }
+  }
+
+  async _checkRateLimit(headers) {
+      try {
+          const rateLimitRemaining = headers["x-ratelimit-remaining"]
+              ? Number(headers["x-ratelimit-remaining"])
+              : undefined;
+
+          const rateLimitResetBy = headers["x-ratelimit-reset-by"]
+              ? new Date(headers["x-ratelimit-reset-by"]).getTime()
+              : undefined;
+
+          if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
+              const resetsIn = rateLimitResetBy - Date.now();
+              this.log(
+                  `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
+              );
+              await this._sleep(resetsIn);
+          } else if (rateLimitRemaining && this.apiLogEnabled) {
+              this.log(
+                  `API rate limit remaining: ${rateLimitRemaining}. Expires in ${rateLimitResetBy - Date.now()}ms`
+              );
+          }
+      } catch (err) {
+          this.log.error(`Error checking rate limit: ${err}`);
+      }
+  }
+
+  _handleApiResponse(result, url, data) {
+      const { code, msg, description } = result.data;
+      const errorMessage = msg || description || "Unknown Wyze API Error";
+
+      if (code !== 1) {
+          this.log.error(`Wyze API Error (${code}): '${errorMessage}'`);
+
+          if (this._isInvalidCredentialsError(errorMessage)) {
+              this.access_token = "";
+              throw new Error(
+                  `Invalid Credentials - please check your credentials & account before trying again. Error: ${errorMessage}`
+              );
+          }
+
+          if (this._isRateLimitError(code, errorMessage)) {
+              return this._handleRateLimitError(result, errorMessage, code);
+          }
+
+          if (this._isAccessTokenError(code, errorMessage)) {
+              return this._handleAccessTokenError(result, errorMessage, code, url, data);
+          }
+
+          if (this._isBadRequestError(code)) {
+              throw new Error(
+                  `Wyze API Bad Request: Check your request parameters - ${JSON.stringify(
+                      { code, message: errorMessage, url, requestBody: data }
+                  )}`
+              );
+          }
+
+          throw new Error(`Wyze API Error (${code}) - ${errorMessage}`);
+      }
+
+      return { ...result, ok: true, data: result.data };
+  }
+
+  _isInvalidCredentialsError(errorMessage) {
+      const invalidMessages = [
           "UserNameOrPasswordError",
           "UserIsLocked",
           "Invalid User Name or Password",
-        ].some((msg) => errorMessage.toLowerCase().includes(msg.toLowerCase()))
-      ) {
-        // TODO: What measures should we take to prevent additional login attempts?
-        this.access_token = "";
-        throw new Error(
-          `Invalid Credentials - please check your credentials & account before trying again. Error: ${errorMessage}`
-        );
-      }
+      ];
+      return invalidMessages.some((msg) =>
+          errorMessage.toLowerCase().includes(msg.toLowerCase())
+      );
+  }
 
-      // Rate-Limited
-      if (
-        code === 3044 ||
-        (code === 1000 &&
-          errorMessage.toLowerCase().includes("too many failed attempts"))
-      ) {
-        return {
+  _isRateLimitError(code, errorMessage) {
+      return (
+          code === 3044 ||
+          (code === 1000 &&
+              errorMessage.toLowerCase().includes("too many failed attempts"))
+      );
+  }
+
+  _handleRateLimitError(result, errorMessage, code) {
+      return {
           ...result,
           ok: false,
           data: result.data,
           error: {
-            retryAfter: new Date().getTime() + 600_000, // 10 minutes from now
-            message: `Rate Limited - please wait before trying again. Error: ${errorMessage}`,
-            code: code,
+              retryAfter: Date.now() + 600_000, // 10 minutes from now
+              message: `Rate Limited - please wait before trying again. Error: ${errorMessage}`,
+              code,
           },
-        };
-      }
+      };
+  }
 
-      // finding conflicting information on whether 1003 is retryable or not.
-      // it is reported to be an auth error but also a device error
-      if (code === 1003) {
-        throw new Error(`Wyze API Error: ${errorMessage}`);
-      }
+  _isAccessTokenError(code, errorMessage) {
+      return (
+          code === 2001 ||
+          errorMessage.toLowerCase().includes("accesstokenerror") ||
+          errorMessage.toLowerCase().includes("access token is error")
+      );
+  }
 
-      if (
-        code === 2001 ||
-        errorMessage.toLowerCase().includes("accesstokenerror") ||
-        errorMessage.toLowerCase().includes("access token is error")
-      ) {
-        this.access_token = "";
-        await this.refreshToken().catch((err) => {
+  async _handleAccessTokenError(result, errorMessage, code, url, data) {
+      this.access_token = "";
+      await this.refreshToken().catch((err) => {
           throw new Error(
-            `Refresh Token could not be used to get a new access token. ${err}`
+              `Refresh Token could not be used to get a new access token. ${err}`
           );
-        });
+      });
 
-        return {
+      return {
           ...result,
           ok: false,
           data: result.data,
           error: {
-            retryAfter: this.access_token ? new Date().getTime() : 0,
-            message: this.access_token
-              ? `Access Token had expired and a new one was obtained. Please retry your request.`
-              : `Access Token Error - please refresh your access token. Error: ${errorMessage}`,
-            code: code,
+              retryAfter: this.access_token ? Date.now() : 0,
+              message: this.access_token
+                  ? `Access Token had expired and a new one was obtained. Please retry your request.`
+                  : `Access Token Error - please refresh your access token. Error: ${errorMessage}`,
+              code,
           },
-        };
-      }
+      };
+  }
 
-      if ([1001, 1004].includes(code)) {
-        throw new Error(
-          `Wyze API Bad Request: Check your request parameters - ${JSON.stringify(
-            {
-              code: code,
-              message: errorMessage,
-              url,
-              requestBody: data,
-            }
-          )}`
-        );
-      }
+  _isBadRequestError(code) {
+      return [1001, 1004].includes(code);
+  }
 
-      throw new Error(`Wyze API Error (${code}) - ${errorMessage}`);
-    }
-
-    return {
-      ...result,
-      ok: true,
-      data: result.data,
-    };
+  _sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   _performLoginRequest(data = {}) {
