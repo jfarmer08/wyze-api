@@ -30,7 +30,8 @@
     "base64-js": "1.5.1",
     "querystring": "0.2.1",
     "uuid-by-string": "4.0.0",
-    "@ptkdev/logger": "1.8.0"
+    "@ptkdev/logger": "1.8.0",
+    "aws-sdk": "2.1678.0"
   },
   "funding": [
     {
