@@ -7,6 +7,7 @@ const payloadFactory = require("./payloadFactory");
 const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
+const RokuAuthLib = require("./rokuAuth")
 
 module.exports = class WyzeAPI {
   constructor(options, log) {
@@ -17,7 +18,7 @@ module.exports = class WyzeAPI {
     // User login parameters
     this.username = options.username;
     this.password = options.password;
-    this.mfaCode = options.mfaCode; // <-- Unused since MFA support was removed.
+    this.mfaCode = options.mfaCode;
     this.apiKey = options.apiKey;
     this.keyId = options.keyId;
 
@@ -77,58 +78,101 @@ module.exports = class WyzeAPI {
     };
   }
 
+  /**
+   * Sends an HTTP request to the specified URL with the provided data.
+   * Handles automatic retries in case of specific errors, such as a retry-after condition.
+   *
+   * @param {string} url - The URL to send the request to.
+   * @param {object} [data={}] - The data to be sent with the request (default is an empty object).
+   * @returns {Promise<Response>} - The response from the server if successful.
+   * @throws {Error} - Throws an error if the request fails after a retry or encounters an unknown error.
+   */
   async request(url, data = {}) {
+    // Ensure the user is logged in before making the request.
     await this.maybeLogin();
+
+    // Perform the initial request and handle errors.
+    return this._handleRequest(url, data);
+  }
+
+  /**
+  * Handles the request process, including retry logic for specific errors.
+  *
+  * @param {string} url - The URL to send the request to.
+  * @param {object} data - The data to be sent with the request.
+  * @returns {Promise<Response>} - The response from the server if successful.
+  * @throws {Error} - Throws an error if the request fails after a retry or encounters an unknown error.
+  */
+  async _handleRequest(url, data) {
     let response = await this._performRequest(url, this.getRequestData(data));
+
+    // If the request is successful, return the response.
     if (response.ok) {
       return response;
-    } else if (response.error && response.error.retryAfter) {
-      this.log.error(
-        `Error: ${response.error.message}. Retrying after ${new Date(
-          response.error.retryAfter
-        )}`
-      );
-
-      const retryAfterMs = response.error.retryAfter - new Date().getTime();
-      if (retryAfterMs > 0) {
-        this.log(`Waiting for ${retryAfterMs}ms before retrying`);
-        await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
-      }
-
-      await this.maybeLogin();
-      response = await this._performRequest(url, this.getRequestData(data));
-      if (response.ok) return response;
-      throw new Error(
-        `Error: ${response.error?.message || "Request Failed After Retry"}`
-      );
-    } else {
-      throw new Error(
-        `Request Failed: ${response.error?.message || "Unknown Error"}`
-      );
     }
+
+    // If a retryAfter error occurs, handle the retry logic.
+    if (response.error?.retryAfter) {
+      return this._handleRetry(url, data, response.error);
+    }
+
+    // Handle any other errors by throwing an appropriate error message.
+    throw new Error(`Request Failed: ${response.error?.message || "Unknown Error"}`);
+  }
+
+  /**
+  * Handles the retry logic if the request fails due to a retryAfter error.
+  *
+  * @param {string} url - The URL to send the request to.
+  * @param {object} data - The data to be sent with the request.
+  * @param {object} error - The error object containing retryAfter information.
+  * @returns {Promise<Response>} - The response from the server if successful after retrying.
+  * @throws {Error} - Throws an error if the request fails after a retry.
+  */
+  async _handleRetry(url, data, error) {
+    this.log.error(`Error: ${error.message}. Retrying after ${new Date(error.retryAfter)}`);
+
+    // Calculate the time to wait before retrying the request.
+    const retryAfterMs = error.retryAfter - new Date().getTime();
+    if (retryAfterMs > 0) {
+      this.log(`Waiting for ${retryAfterMs}ms before retrying`);
+      await new Promise((resolve) => setTimeout(resolve, retryAfterMs));
+    }
+
+    // Attempt to log in again before retrying the request.
+    await this.maybeLogin();
+
+    // Retry the request.
+    const response = await this._performRequest(url, this.getRequestData(data));
+
+    // If the retry is successful, return the response.
+    if (response.ok) return response;
+
+    // If the retry fails, throw an error with the failure message.
+    throw new Error(`Error: ${response.error?.message || "Request Failed After Retry"}`);
   }
 
   async _performRequest(url, data = {}, config = {}) {
     // Prepare the request configuration
     config = {
-        method: "POST",
-        url,
-        data,
-        baseURL: this.apiBaseUrl,
-        ...config,
+      method: "POST",
+      url,
+      data,
+      baseURL: this.apiBaseUrl,
+      ...config,
     };
 
     // Log the request if API logging is enabled
     if (this.apiLogEnabled) {
-        this.log(`Performing request: ${JSON.stringify(config)}`);
+      this.log(`Performing request: ${JSON.stringify(config)}`);
     }
 
     let result;
     try {
-        result = await axios(config);
+      result = await axios(config);
     } catch (err) {
-        this._handleRequestError(err, url);
-        throw err;
+      this._handleRequestError(err, url);
+      throw err;
     }
 
     // Handle logging of response data
@@ -142,176 +186,172 @@ module.exports = class WyzeAPI {
   }
 
   _handleRequestError(err, url) {
-      if (err.response) {
-          this.log.error(
-              `Request Failed: ${JSON.stringify({
-                  url,
-                  status: err.response.status,
-                  data: err.response.data,
-                  headers: err.response.headers,
-              })}`
-          );
-      } else {
-          this.log.error(
-              `Request Failed: ${JSON.stringify({
-                  url,
-                  message: err.message,
-              })}`
-          );
-      }
+    if (err.response) {
+      this.log.error(
+        `Request Failed: ${JSON.stringify({
+          url,
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers,
+        })}`
+      );
+    } else {
+      this.log.error(
+        `Request Failed: ${JSON.stringify({
+          url,
+          message: err.message,
+        })}`
+      );
+    }
   }
 
   _logApiResponse(result, url) {
-      if (this.dumpData) {
-          this.dumpData = false;
-          this.log(
-              `API response PerformRequest: ${JSON.stringify(
-                  result.data,
-                  (key, val) => (key.includes("token") ? "*******" : val)
-              )}`
-          );
-      } else if (this.apiLogEnabled) {
-          this.log(
-              `API response PerformRequest: ${JSON.stringify({
-                  url,
-                  status: result.status,
-                  data: result.data,
-                  headers: result.headers,
-              })}`
-          );
-      }
+    if (this.dumpData) {
+      this.dumpData = false;
+      this.log(
+        `API response PerformRequest: ${JSON.stringify(
+          result.data,
+          (key, val) => (key.includes("token") ? "*******" : val)
+        )}`
+      );
+    } else if (this.apiLogEnabled) {
+      this.log(
+        `API response PerformRequest: ${JSON.stringify({
+          url,
+          status: result.status,
+          data: result.data,
+          headers: result.headers,
+        })}`
+      );
+    }
   }
 
   async _checkRateLimit(headers) {
-      try {
-          const rateLimitRemaining = headers["x-ratelimit-remaining"]
-              ? Number(headers["x-ratelimit-remaining"])
-              : undefined;
+    try {
+      const rateLimitRemaining = headers["x-ratelimit-remaining"]
+        ? Number(headers["x-ratelimit-remaining"])
+        : undefined;
 
-          const rateLimitResetBy = headers["x-ratelimit-reset-by"]
-              ? new Date(headers["x-ratelimit-reset-by"]).getTime()
-              : undefined;
+      const rateLimitResetBy = headers["x-ratelimit-reset-by"]
+        ? new Date(headers["x-ratelimit-reset-by"]).getTime()
+        : undefined;
 
-          if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
-              const resetsIn = rateLimitResetBy - Date.now();
-              this.log(
-                  `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
-              );
-              await this._sleep(resetsIn);
-          } else if (rateLimitRemaining && this.apiLogEnabled) {
-              this.log(
-                  `API rate limit remaining: ${rateLimitRemaining}. Expires in ${rateLimitResetBy - Date.now()}ms`
-              );
-          }
-      } catch (err) {
-          this.log.error(`Error checking rate limit: ${err}`);
+      if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
+        const resetsIn = rateLimitResetBy - Date.now();
+        this.log(
+          `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
+        );
+        await this.sleepMilliSecounds(resetsIn);
+      } else if (rateLimitRemaining && this.apiLogEnabled) {
+        this.log(
+          `API rate limit remaining: ${rateLimitRemaining}. Expires in ${rateLimitResetBy - Date.now()}ms`
+        );
       }
+    } catch (err) {
+      this.log.error(`Error checking rate limit: ${err}`);
+    }
   }
 
   _handleApiResponse(result, url, data) {
-      const { code, msg, description } = result.data;
-      const errorMessage = msg || description || "Unknown Wyze API Error";
+    const { code, msg, description } = result.data;
+    const errorMessage = msg || description || "Unknown Wyze API Error";
 
-      if (code !== 1) {
-          this.log.error(`Wyze API Error (${code}): '${errorMessage}'`);
+    if (code !== 1) {
+      this.log.error(`Wyze API Error (${code}): '${errorMessage}'`);
 
-          if (this._isInvalidCredentialsError(errorMessage)) {
-              this.access_token = "";
-              throw new Error(
-                  `Invalid Credentials - please check your credentials & account before trying again. Error: ${errorMessage}`
-              );
-          }
-
-          if (this._isRateLimitError(code, errorMessage)) {
-              return this._handleRateLimitError(result, errorMessage, code);
-          }
-
-          if (this._isAccessTokenError(code, errorMessage)) {
-              return this._handleAccessTokenError(result, errorMessage, code, url, data);
-          }
-
-          if (this._isBadRequestError(code)) {
-              throw new Error(
-                  `Wyze API Bad Request: Check your request parameters - ${JSON.stringify(
-                      { code, message: errorMessage, url, requestBody: data }
-                  )}`
-              );
-          }
-
-          throw new Error(`Wyze API Error (${code}) - ${errorMessage}`);
+      if (this._isInvalidCredentialsError(errorMessage)) {
+        this.access_token = "";
+        throw new Error(
+          `Invalid Credentials - please check your credentials & account before trying again. Error: ${errorMessage}`
+        );
       }
 
-      return { ...result, ok: true, data: result.data };
+      if (this._isRateLimitError(code, errorMessage)) {
+        return this._handleRateLimitError(result, errorMessage, code);
+      }
+
+      if (this._isAccessTokenError(code, errorMessage)) {
+        return this._handleAccessTokenError(result, errorMessage, code, url, data);
+      }
+
+      if (this._isBadRequestError(code)) {
+        throw new Error(
+          `Wyze API Bad Request: Check your request parameters - ${JSON.stringify(
+            { code, message: errorMessage, url, requestBody: data }
+          )}`
+        );
+      }
+
+      throw new Error(`Wyze API Error (${code}) - ${errorMessage}`);
+    }
+
+    return { ...result, ok: true, data: result.data };
   }
 
   _isInvalidCredentialsError(errorMessage) {
-      const invalidMessages = [
-          "UserNameOrPasswordError",
-          "UserIsLocked",
-          "Invalid User Name or Password",
-      ];
-      return invalidMessages.some((msg) =>
-          errorMessage.toLowerCase().includes(msg.toLowerCase())
-      );
+    const invalidMessages = [
+      "UserNameOrPasswordError",
+      "UserIsLocked",
+      "Invalid User Name or Password",
+    ];
+    return invalidMessages.some((msg) =>
+      errorMessage.toLowerCase().includes(msg.toLowerCase())
+    );
   }
 
   _isRateLimitError(code, errorMessage) {
-      return (
-          code === 3044 ||
-          (code === 1000 &&
-              errorMessage.toLowerCase().includes("too many failed attempts"))
-      );
+    return (
+      code === 3044 ||
+      (code === 1000 &&
+        errorMessage.toLowerCase().includes("too many failed attempts"))
+    );
   }
 
   _handleRateLimitError(result, errorMessage, code) {
-      return {
-          ...result,
-          ok: false,
-          data: result.data,
-          error: {
-              retryAfter: Date.now() + 600_000, // 10 minutes from now
-              message: `Rate Limited - please wait before trying again. Error: ${errorMessage}`,
-              code,
-          },
-      };
+    return {
+      ...result,
+      ok: false,
+      data: result.data,
+      error: {
+        retryAfter: Date.now() + 600_000, // 10 minutes from now
+        message: `Rate Limited - please wait before trying again. Error: ${errorMessage}`,
+        code,
+      },
+    };
   }
 
   _isAccessTokenError(code, errorMessage) {
-      return (
-          code === 2001 ||
-          errorMessage.toLowerCase().includes("accesstokenerror") ||
-          errorMessage.toLowerCase().includes("access token is error")
-      );
+    return (
+      code === 2001 ||
+      errorMessage.toLowerCase().includes("accesstokenerror") ||
+      errorMessage.toLowerCase().includes("access token is error")
+    );
   }
 
   async _handleAccessTokenError(result, errorMessage, code, url, data) {
-      this.access_token = "";
-      await this.refreshToken().catch((err) => {
-          throw new Error(
-              `Refresh Token could not be used to get a new access token. ${err}`
-          );
-      });
+    this.access_token = "";
+    await this.refreshToken().catch((err) => {
+      throw new Error(
+        `Refresh Token could not be used to get a new access token. ${err}`
+      );
+    });
 
-      return {
-          ...result,
-          ok: false,
-          data: result.data,
-          error: {
-              retryAfter: this.access_token ? Date.now() : 0,
-              message: this.access_token
-                  ? `Access Token had expired and a new one was obtained. Please retry your request.`
-                  : `Access Token Error - please refresh your access token. Error: ${errorMessage}`,
-              code,
-          },
-      };
+    return {
+      ...result,
+      ok: false,
+      data: result.data,
+      error: {
+        retryAfter: this.access_token ? Date.now() : 0,
+        message: this.access_token
+          ? `Access Token had expired and a new one was obtained. Please retry your request.`
+          : `Access Token Error - please refresh your access token. Error: ${errorMessage}`,
+        code,
+      },
+    };
   }
 
   _isBadRequestError(code) {
-      return [1001, 1004].includes(code);
-  }
-
-  _sleep(ms) {
-      return new Promise((resolve) => setTimeout(resolve, ms));
+    return [1001, 1004].includes(code);
   }
 
   _performLoginRequest(data = {}) {
@@ -361,123 +401,252 @@ module.exports = class WyzeAPI {
     }
   }
 
+  /**
+   * Ensures that the user is logged in by checking and managing the access token.
+   * If the access token is missing or expired, it handles the login process,
+   * considering debounce settings to avoid multiple login attempts.
+   */
   async maybeLogin() {
+    // Check if the access token is available.
     if (!this.access_token) {
-        await this._loadPersistedTokens();
+      await this._loadPersistedTokens(); // Load any previously saved tokens.
     }
 
+    // If the access token is still not available, proceed with login logic.
     if (this.access_token) {
-        return;
+      return; // Token is available, no need to log in.
     }
 
-    const now = Date.now();
-    this.logDebounceInfo(now);
+    const now = Date.now(); // Get the current time.
+    this.logDebounceInfo(now); // Log debounce information for debugging purposes.
 
+    // Check if the debounce period has expired.
     if (this.isDebounceCleared(now)) {
-        this.resetDebounceIfNeeded(now);
-        await this.tryLogin(now);
+      this.resetDebounceIfNeeded(now); // Reset debounce settings if necessary.
+      await this.tryLogin(now); // Attempt to log in.
     } else {
-        await this.waitForDebounceClearance(now);
-        if (!this.access_token) {
-            this.updateDebounceAndLogin(now);
-        }
+      // Wait for the debounce period to expire before retrying login.
+      await this.waitForDebounceClearance(now);
+
+      // If the access token is still not available after waiting,
+      // update debounce settings and try logging in again.
+      if (!this.access_token) {
+        this.updateDebounceAndLogin(now);
+      }
     }
   }
 
+  /**
+  * Logs information about the current debounce state.
+  * @param {number} now - The current time in milliseconds.
+  */
   logDebounceInfo(now) {
-      if (this.apiLogEnabled) {
-          this.log(
-              `Last login: ${this.lastLoginAttempt}, Debounce: ${this.loginAttemptDebounceMilliseconds}, Now: ${now}`
-          );
-      }
-  }
-
-  isDebounceCleared(now) {
-      return this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds < now;
-  }
-
-  resetDebounceIfNeeded(now) {
-      if (now - this.lastLoginAttempt > 60 * 1000 * 60 * 12) {
-          this.loginAttemptDebounceMilliseconds = 1000;
-      }
-  }
-
-  async tryLogin(now) {
-      this.lastLoginAttempt = now;
-      await this.login();
-  }
-
-  async waitForDebounceClearance(now) {
+    if (this.apiLogEnabled) {
       this.log(
-          `Attempting to login before debounce has cleared, waiting ${this.loginAttemptDebounceMilliseconds / 1000} seconds`
+        `Last login: ${this.lastLoginAttempt}, Debounce: ${this.loginAttemptDebounceMilliseconds} ms, Now: ${now}`
       );
+    }
+  }
 
-      let waitTime = 0;
-      while (waitTime < this.loginAttemptDebounceMilliseconds) {
-          await this.sleep(2000);
-          waitTime += 2000;
-          if (this.access_token) {
-              break;
-          }
+  /**
+  * Checks if the debounce period has expired.
+  * @param {number} now - The current time in milliseconds.
+  * @returns {boolean} - True if the debounce period has expired, false otherwise.
+  */
+  isDebounceCleared(now) {
+    return (this.lastLoginAttempt + this.loginAttemptDebounceMilliseconds) < now;
+  }
+
+  /**
+  * Resets the debounce settings if needed.
+  * @param {number} now - The current time in milliseconds.
+  */
+  resetDebounceIfNeeded(now) {
+    const debounceThreshold = 12 * 60 * 60 * 1000; // 12 hours in milliseconds
+    if (now - this.lastLoginAttempt > debounceThreshold) {
+      this.loginAttemptDebounceMilliseconds = 1000; // Reset to 1 second
+    }
+  }
+
+  /**
+  * Attempts to perform the login process.
+  * @param {number} now - The current time in milliseconds.
+  */
+  async tryLogin(now) {
+    this.lastLoginAttempt = now; // Update the last login attempt time.
+    await this.login(); // Perform the login.
+  }
+
+  /**
+  * Waits for the debounce period to expire before retrying login.
+  * @param {number} now - The current time in milliseconds.
+  */
+  async waitForDebounceClearance(now) {
+    this.log(
+      `Attempting to login before debounce has cleared, waiting ${this.loginAttemptDebounceMilliseconds / 1000} seconds`
+    );
+
+    let waitTime = 0;
+    while (waitTime < this.loginAttemptDebounceMilliseconds) {
+      await this.sleepSeconds(2); // Wait for 2 seconds.
+      waitTime += 2000;
+      if (this.access_token) {
+        return; // Exit if access token becomes available.
       }
+    }
   }
 
+  /**
+  * Updates debounce settings and attempts to log in again.
+  * @param {number} now - The current time in milliseconds.
+  */
   async updateDebounceAndLogin(now) {
-      this.lastLoginAttempt = now;
-      this.loginAttemptDebounceMilliseconds = Math.min(
-          this.loginAttemptDebounceMilliseconds * 2,
-          1000 * 60 * 5
-      );
-      await this.login();
+    this.lastLoginAttempt = now; // Update the last login attempt time.
+    this.loginAttemptDebounceMilliseconds = Math.min(
+      this.loginAttemptDebounceMilliseconds * 2, // Double the debounce time.
+      5 * 60 * 1000 // Cap the debounce time to 5 minutes.
+    );
+    await this.login(); // Perform the login.
   }
 
-
+  /**
+   * Refreshes the access token using the refresh token.
+   * If successful, updates and persists the new tokens.
+   * @throws {Error} - Throws an error if the refresh token request fails or if the response is invalid.
+   */
   async refreshToken() {
     const data = {
       ...this.getRequestData(),
       refresh_token: this.refresh_token,
     };
 
-    const result = await this._performRequest("app/user/refresh_token", data);
-    if (result.ok && result.data.data) {
-      await this._updateTokens(result.data.data);
-    } else {
-      throw new Error(
-        `Failed to refresh access token - ${JSON.stringify(result)}`
-      );
+    const maxRetries = 2; // One initial attempt + one retry
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        // Perform the token refresh request.
+        const result = await this._performRequest("app/user/refresh_token", data);
+
+        // Validate the response structure.
+        if (result.ok && result.data?.data) {
+          // Update and persist the new tokens.
+          await this._updateTokens(result.data.data);
+          return; // Exit if successful.
+        } else {
+          throw new Error(
+            `Failed to refresh access token - ${JSON.stringify(result)}`
+          );
+        }
+      } catch (error) {
+        attempt += 1;
+        if (attempt < maxRetries) {
+          this.log(`Retrying token refresh, attempt ${attempt}...`);
+          // Wait before retrying
+          await this.sleepSeconds(2); // Sleep for 2 seconds before retrying
+        } else {
+          this.log(`Error during token refresh: ${error.message}`);
+          throw new Error(`Token refresh failed: ${error.message}`);
+        }
+      }
     }
   }
 
+  /**
+  * Updates the access and refresh tokens with new values.
+  * @param {object} tokens - Object containing new access and refresh tokens.
+  * @param {string} tokens.access_token - The new access token.
+  * @param {string} tokens.refresh_token - The new refresh token.
+  * @throws {Error} - Throws an error if token persistence fails.
+  */
   async _updateTokens({ access_token, refresh_token }) {
-    this.access_token = access_token;
-    this.refresh_token = refresh_token;
-    await this._persistTokens();
+    try {
+      // Update the current tokens.
+      this.access_token = access_token;
+      this.refresh_token = refresh_token;
+
+      // Persist the updated tokens to storage.
+      await this._persistTokens();
+    } catch (error) {
+      // Handle errors during token persistence.
+      this.log(`Error updating tokens: ${error.message}`);
+      throw new Error(`Failed to update tokens: ${error.message}`);
+    }
   }
 
+  /**
+  * Constructs the file path for storing tokens.
+  * @returns {string} - The file path where tokens are stored.
+  */
   _tokenPersistPath() {
-    const uuid = getUuid(this.username);
-    return path.join(this.persistPath, `wyze-${uuid}.json`);
+    const uuid = getUuid(this.username); // Generate a unique identifier based on the username.
+    if (!uuid) {
+      throw new Error("Failed to generate UUID for token persistence path.");
+    }
+    return path.join(this.persistPath, `wyze-${uuid}.json`); // Construct the file path.
   }
 
+  /**
+  * Persists the current access and refresh tokens to a file.
+  * @throws {Error} - Throws an error if file writing fails.
+  */
   async _persistTokens() {
     const data = {
       access_token: this.access_token,
       refresh_token: this.refresh_token,
     };
-    const tokenPath = this._tokenPersistPath();
+    const tokenPath = this._tokenPersistPath(); // Get the file path for tokens.
 
-    if (this.apiLogEnabled) this.log(`Persisting tokens @ ${tokenPath}`);
-    await fs.writeFile(tokenPath, JSON.stringify(data));
+    const maxRetries = 2; // One initial attempt + one retry
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+      try {
+        if (this.apiLogEnabled) {
+          this.log(`Persisting tokens @ ${tokenPath}`);
+        }
+        await fs.writeFile(tokenPath, JSON.stringify(data)); // Write tokens to the file.
+        return; // Exit if successful.
+      } catch (error) {
+        attempt += 1;
+        if (attempt < maxRetries) {
+          this.log(`Retrying token persistence, attempt ${attempt}...`);
+          // Wait before retrying
+          await this.sleepSeconds(2); // Sleep for 2 seconds before retrying
+        } else {
+          this.log(`Error persisting tokens: ${error.message}`);
+          throw new Error(`Failed to persist tokens: ${error.message}`);
+        }
+      }
+    }
   }
 
+  /**
+  * Loads persisted tokens from storage and updates the current tokens.
+  * Logs a message if no tokens are found.
+  * @throws {Error} - Throws an error if file reading or data parsing fails.
+  */
   async _loadPersistedTokens() {
+    const tokenPath = this._tokenPersistPath(); // Get the file path for tokens.
+
     try {
-      let data = await fs.readFile(this._tokenPersistPath());
-      data = JSON.parse(data);
-      this.access_token = data.access_token;
-      this.refresh_token = data.refresh_token;
-    } catch (e) {
-      if (this.apiLogEnabled) this.log("No persisted tokens found");
+      const data = await fs.readFile(tokenPath); // Read the token file.
+      const parsedData = JSON.parse(data); // Parse the token data.
+
+      // Validate the token data structure.
+      if (parsedData.access_token && parsedData.refresh_token) {
+        this.access_token = parsedData.access_token;
+        this.refresh_token = parsedData.refresh_token;
+      } else {
+        throw new Error("Persisted tokens are invalid.");
+      }
+    } catch (error) {
+      // Handle errors such as file not found or JSON parsing errors.
+      if (this.apiLogEnabled) {
+        this.log(`Error loading persisted tokens: ${error.message}`);
+      }
+
+      // Consider implementing a fallback or recovery strategy here.
     }
   }
 
@@ -526,29 +695,29 @@ module.exports = class WyzeAPI {
 
   async runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey) {
     const plist = [
-        { pid: propertyId, pvalue: String(propertyValue) }
+      { pid: propertyId, pvalue: String(propertyValue) }
     ];
 
     // Add default property if not already P3
     if (propertyId !== "P3") {
-        plist.push({ pid: "P3", pvalue: "1" });
+      plist.push({ pid: "P3", pvalue: "1" });
     }
 
     const data = {
-        action_list: [
-            {
-                instance_id: deviceMac,
-                action_params: {
-                    list: [{ mac: deviceMac, plist }]
-                },
-                provider_key: deviceModel,
-                action_key: actionKey
-            }
-        ]
+      action_list: [
+        {
+          instance_id: deviceMac,
+          action_params: {
+            list: [{ mac: deviceMac, plist }]
+          },
+          provider_key: deviceModel,
+          action_key: actionKey
+        }
+      ]
     };
 
     if (this.apiLogEnabled) {
-        this.log(`runActionList Request Data: ${JSON.stringify(data)}`);
+      this.log(`runActionList Request Data: ${JSON.stringify(data)}`);
     }
 
     const result = await this.request("app/v2/auto/run_action_list", data);
@@ -561,35 +730,35 @@ module.exports = class WyzeAPI {
     const path = "/openapi/lock/v1/control";
     const uuid = this.getUuid(deviceMac, deviceModel);
     let payload = {
-        uuid,
-        action, // "remoteLock" or "remoteUnlock"
+      uuid,
+      action, // "remoteLock" or "remoteUnlock"
     };
 
     try {
-        // Generate payload using the payloadFactory
-        payload = payloadFactory.fordCreatePayload(
-            this.access_token,
-            payload,
-            path,
-            "post"
-        );
+      // Generate payload using the payloadFactory
+      payload = payloadFactory.fordCreatePayload(
+        this.access_token,
+        payload,
+        path,
+        "post"
+      );
 
-        const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
-        const result = await axios.post(urlPath, payload);
+      const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
+      const result = await axios.post(urlPath, payload);
 
-        if (this.apiLogEnabled) {
-            this.log(`API response ControlLock: ${JSON.stringify(result.data)}`);
-        }
+      if (this.apiLogEnabled) {
+        this.log(`API response ControlLock: ${JSON.stringify(result.data)}`);
+      }
 
-        return result.data;
+      return result.data;
     } catch (error) {
-        this.log.error(`Request failed: ${error.message}`);
+      this.log.error(`Request failed: ${error.message}`);
 
-        if (error.response) {
-            this.log.error(`Response ControlLock (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
-        }
+      if (error.response) {
+        this.log.error(`Response ControlLock (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
+      }
 
-        throw error;
+      throw error;
     }
   }
 
@@ -635,12 +804,14 @@ module.exports = class WyzeAPI {
   }
 
   async getIotProp(deviceMac) {
-    let keys =
-      "iot_state,switch-power,switch-iot,single_press_type, double_press_type, triple_press_type, long_press_type";
+    const keys = "iot_state,switch-power,switch-iot,single_press_type,double_press_type,triple_press_type,long_press_type";
+
     await this.maybeLogin();
-    let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
+
+    const payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
+    const signature = crypto.oliveCreateSignature(payload, this.access_token);
+
+    const config = {
       headers: {
         "Accept-Encoding": "gzip",
         "User-Agent": this.userAgent,
@@ -652,29 +823,31 @@ module.exports = class WyzeAPI {
       },
       params: payload,
     };
-    try {
-      const url =
-        "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop";
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled)
-        this.log(
-          `API response GetIotProp: ${JSON.stringify(result.data)}`
-        );
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
 
-      if (e.response) {
+    const url = "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop";
+
+    if (this.apiLogEnabled) {
+      this.log(`Performing request: ${url}`);
+    }
+
+    try {
+      const result = await axios.get(url, config);
+
+      if (this.apiLogEnabled) {
+        this.log(`API response GetIotProp: ${JSON.stringify(result.data)}`);
+      }
+
+      return result.data;
+    } catch (error) {
+      this.log.error(`Request failed: ${error.message}`);
+
+      if (error.response) {
         this.log.error(
-          `Response GetIotProp (${e.response.statusText}): ${JSON.stringify(
-            e.response.data,
-            null,
-            "\t"
-          )}`
+          `Response GetIotProp (${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`
         );
       }
-      throw e;
+
+      throw error;
     }
   }
 
@@ -801,8 +974,7 @@ module.exports = class WyzeAPI {
       this.log.error(`Request failed: ${e}`);
       if (e.response && this.apiLogEnabled) {
         this.log.error(
-          `Response DisableRemeAlarm (${
-            e.response.statusText
+          `Response DisableRemeAlarm (${e.response.statusText
           }): ${JSON.stringify(e.response.data, null, "\t")}`
         );
       }
@@ -845,8 +1017,7 @@ module.exports = class WyzeAPI {
       this.log.error(`Request failed: ${e}`);
       if (e.response) {
         this.log.error(
-          `Response GetPlanBindingListByUser (${
-            e.response.statusText
+          `Response GetPlanBindingListByUser (${e.response.statusText
           }): ${JSON.stringify(e.response.data, null, "\t")}`
         );
       }
@@ -890,8 +1061,7 @@ module.exports = class WyzeAPI {
 
       if (e.response) {
         this.log.error(
-          `Response MonitoringProfileStateStatus (${
-            e.response.statusText
+          `Response MonitoringProfileStateStatus (${e.response.statusText
           }): ${JSON.stringify(e.response.data, null, "\t")}`
         );
       }
@@ -944,8 +1114,7 @@ module.exports = class WyzeAPI {
 
       if (e.response) {
         this.log.error(
-          `Response MonitoringProfileActive (${
-            e.response.statusText
+          `Response MonitoringProfileActive (${e.response.statusText
           }): ${JSON.stringify(e.response.data, null, "\t")}`
         );
       }
@@ -988,8 +1157,7 @@ module.exports = class WyzeAPI {
 
       if (e.response) {
         this.log.error(
-          `Response ThermostatGetIotProp (${
-            e.response.statusText
+          `Response ThermostatGetIotProp (${e.response.statusText
           }): ${JSON.stringify(e.response.data, null, "\t")}`
         );
       }
@@ -1038,8 +1206,7 @@ module.exports = class WyzeAPI {
 
       if (e.response) {
         this.log.error(
-          `Response ThermostatSetIotProp (${
-            e.response.statusText
+          `Response ThermostatSetIotProp (${e.response.statusText
           }): ${JSON.stringify(e.response.data, null, "\t")}`
         );
       }
@@ -1047,52 +1214,89 @@ module.exports = class WyzeAPI {
     }
   }
 
-  
-  async localBulbCommand(deviceMac, deviceModel, deviceEnr, deviceIp, propertyId, propertyValue, actionKey) {
 
+  /**
+   * Sends a command to a local smart bulb device to set a specific property value.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @param {string} deviceEnr - The encrypted device identifier.
+   * @param {string} deviceIp - The IP address of the device.
+   * @param {string} propertyId - The ID of the property to set.
+   * @param {string|number} propertyValue - The value to set for the property.
+   * @param {string} actionKey - The action key used for the command (for future use).
+   * @return {Promise<void>} A promise that resolves when the command is sent or handles errors if the command fails.
+   */
+  async localBulbCommand(deviceMac, deviceModel, deviceEnr, deviceIp, propertyId, propertyValue, actionKey) {
+    // Log the start of the command process
+    console.log(`Initiating local command for device ${deviceMac} (${deviceModel}).`);
+
+    // Create a property list with the ID and value
     const plist = [
       { pid: propertyId, pvalue: String(propertyValue) }
     ];
 
+    // Construct the characteristics object
     const characteristics = {
-        mac: deviceMac.toUpperCase(),
-        index: '1',
-        ts: moment().valueOf(), // current timestamp in milliseconds
-        plist: plist
+      mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
+      index: '1', // Fixed index value
+      ts: moment().valueOf(), // Current timestamp in milliseconds
+      plist: plist // Property list with the ID and value
     };
 
+    // Convert characteristics object to JSON string
     const characteristicsStr = JSON.stringify(characteristics, null, 0);
-    const characteristicsEnc = util.wyzeEncrypt(deviceEnr, characteristicsStr);
+    console.log(`Characteristics JSON: ${characteristicsStr}`);
 
+    // Encrypt the JSON string
+    const characteristicsEnc = util.wyzeEncrypt(deviceEnr, characteristicsStr);
+    console.log(`Encrypted characteristics: ${characteristicsEnc}`);
+
+    // Create the payload for the request
     const payload = {
-        request: 'set_status',
-        isSendQueue: 0,
-        characteristics: characteristicsEnc
+      request: 'set_status', // Request type
+      isSendQueue: 0, // Flag indicating whether to send the request immediately
+      characteristics: characteristicsEnc // Encrypted characteristics data
     };
 
-    // Convert payload to a JSON string and replace '\\\\' with '\'
+    // Convert payload to JSON string and fix any escaped backslashes
     const payloadStr = JSON.stringify(payload, null, 0).replace(/\\\\/g, '\\');
+    console.log(`Payload JSON: ${payloadStr}`);
 
+    // Define the URL for the local device request
     const url = `http://${deviceIp}:88/device_request`;
+    console.log(`Sending request to URL: ${url}`);
 
     try {
-        const response = await axios.post(url, payloadStr, {
-            headers: { 'Content-Type': 'application/json' }
-        });
-        console.log(response.data);
+      // Send the POST request to the local device
+      const response = await axios.post(url, payloadStr, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      // Log the response data
+      console.log(`Response received from device ${deviceMac}:`, response.data);
     } catch (error) {
-        if (error.response) {
-            // Handle HTTP error
-            console.warn(`Failed to connect to bulb ${deviceMac}, reverting to cloud.`);
-            // Call your fallback function here
-            await runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey)
-            bulb.cloudFallback = true;
-        } else {
-            // Handle other errors
-            console.error(error);
-        }
+      if (error.response) {
+        // Log the HTTP error details
+        console.warn(`Failed to connect to bulb ${deviceMac}. HTTP status: ${error.response.status}. Response data:`, error.response.data);
+
+        // Handle fallback to cloud
+        console.log(`Attempting to fallback to cloud for device ${deviceMac}.`);
+        await runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey);
+      } else {
+        // Log other types of errors
+        console.error(`Error occurred while sending command to device ${deviceMac}:`, error);
+      }
     }
   }
+
+  async authenticateAndFetchData() {
+    const rokuAuth = new RokuAuthLib(this.username, this.password);
+    const token = await rokuAuth.getTokenWithUsernamePassword(this.username, this.password);
+
+    print(token)
+  }
+
   /**
    * Helper functions
    */
@@ -1102,47 +1306,47 @@ module.exports = class WyzeAPI {
   }
 
   async getObjectListSafe() {
-      try {
-          return await this.getObjectList();
-      } catch (error) {
-          this.log.error(`Failed to get object list: ${error.message}`);
-          throw error;
-      }
+    try {
+      return await this.getObjectList();
+    } catch (error) {
+      this.log.error(`Failed to get object list: ${error.message}`);
+      throw error;
+    }
   }
 
   async getDeviceList() {
-      const result = await this.getObjectListSafe();
-      return result.data.device_list || [];
+    const result = await this.getObjectListSafe();
+    return result.data.device_list || [];
   }
 
   async getDeviceByName(nickname) {
-      const devices = await this.getDeviceList();
-      return devices.find(device => device.nickname.toLowerCase() === nickname.toLowerCase());
+    const devices = await this.getDeviceList();
+    return devices.find(device => device.nickname.toLowerCase() === nickname.toLowerCase());
   }
 
   async getDeviceByMac(mac) {
-      const devices = await this.getDeviceList();
-      return devices.find(device => device.mac === mac);
+    const devices = await this.getDeviceList();
+    return devices.find(device => device.mac === mac);
   }
 
   async getDevicesByType(type) {
-      const devices = await this.getDeviceList();
-      return devices.filter(device => device.product_type.toLowerCase() === type.toLowerCase());
+    const devices = await this.getDeviceList();
+    return devices.filter(device => device.product_type.toLowerCase() === type.toLowerCase());
   }
 
   async getDevicesByModel(model) {
-      const devices = await this.getDeviceList();
-      return devices.filter(device => device.product_model.toLowerCase() === model.toLowerCase());
+    const devices = await this.getDeviceList();
+    return devices.filter(device => device.product_model.toLowerCase() === model.toLowerCase());
   }
 
   async getDeviceGroupsList() {
-      const result = await this.getObjectListSafe();
-      return result.data.device_group_list || [];
+    const result = await this.getObjectListSafe();
+    return result.data.device_group_list || [];
   }
 
   async getDeviceSortList() {
-      const result = await this.getObjectListSafe();
-      return result.data.device_sort_list || [];
+    const result = await this.getObjectListSafe();
+    return result.data.device_sort_list || [];
   }
 
   async getDeviceStatus(device) {
@@ -1236,66 +1440,182 @@ module.exports = class WyzeAPI {
     return await this.getLockInfo(device.mac, device.product_model);
   }
 
+  /**
+   * Sets the flood light property of a camera to a specified value.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @param {string} value - The value to set for the flood light property.
+   * @return {Promise<void>} A promise that resolves when the property has been set.
+   */
   async cameraFloodLight(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1056", value);
   }
 
+  /**
+   * Turns on the flood light of a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when the flood light has been turned on.
+   */
   async cameraFloodLightOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "1");
   }
 
+  /**
+   * Turns off the flood light of a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when the flood light has been turned off.
+   */
   async cameraFloodLightOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "2");
   }
 
+  /**
+   * Sets the spot light property of a camera to a specified value.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @param {string} value - The value to set for the spot light property.
+   * @return {Promise<void>} A promise that resolves when the property has been set.
+   */
   async cameraSpotLight(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1056", value);
   }
 
+  /**
+   * Turns on the spot light of a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when the spot light has been turned on.
+   */
   async cameraSpotLightOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "1");
   }
 
+  /**
+   * Turns off the spot light of a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when the spot light has been turned off.
+   */
   async cameraSpotLightOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1056", "2");
   }
 
+  /**
+   * Turns on motion detection for a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when motion detection has been turned on.
+   */
   async cameraMotionOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1001", 1);
   }
 
+  /**
+   * Turns off motion detection for a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when motion detection has been turned off.
+   */
   async cameraMotionOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1001", 0);
   }
 
+  /**
+   * Turns on sound notifications for a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when sound notifications have been turned on.
+   */
   async cameraSoundNotificationOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1048", "1");
   }
 
+  /**
+   * Turns off sound notifications for a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when sound notifications have been turned off.
+   */
   async cameraSoundNotificationOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1048", "0");
   }
 
+  /**
+   * Sets the notification property of a camera to a specified value.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @param {string} value - The value to set for the notification property.
+   * @return {Promise<void>} A promise that resolves when the property has been set.
+   */
   async cameraNotifications(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1", value);
   }
 
+  /**
+   * Turns on camera notifications.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when notifications have been turned on.
+   */
   async cameraNotificationsOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1", "1");
   }
 
+  /**
+   * Turns off camera notifications.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when notifications have been turned off.
+   */
   async cameraNotificationsOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1", "0");
   }
 
+  /**
+   * Sets the motion recording property of a camera to a specified value.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @param {string} value - The value to set for the motion recording property.
+   * @return {Promise<void>} A promise that resolves when the property has been set.
+   */
   async cameraMotionRecording(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, "P1047", value);
   }
 
+  /**
+   * Turns on motion recording for a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when motion recording has been turned on.
+   */
   async cameraMotionRecordingOn(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1047", "1");
   }
 
+  /**
+   * Turns off motion recording for a camera.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @return {Promise<void>} A promise that resolves when motion recording has been turned off.
+   */
   async cameraMotionRecordingOff(deviceMac, deviceModel) {
     await this.setProperty(deviceMac, deviceModel, "P1047", "0");
   }
@@ -1563,6 +1883,18 @@ module.exports = class WyzeAPI {
     return state;
   }
 
+  /**
+   * Retrieves the state of a device property identified by its PID.
+   *
+   * @param {string} deviceMac - The MAC address of the device.
+   * @param {string} deviceModel - The model of the device.
+   * @param {number} pid - The property ID to look for.
+   * @return {Promise<number|string>} A promise that resolves to:
+   *   - 1 if the property value is "1",
+   *   - 0 if the property value is anything other than "1",
+   *   - An empty string if the property value is undefined,
+   *   - or undefined if the PID is not found.
+   */
   async getDeviceStatePID(deviceMac, deviceModel, pid) {
     const prop = await this.getDevicePID(deviceMac, deviceModel);
     for (const property of prop.data.property_list) {
@@ -1576,6 +1908,12 @@ module.exports = class WyzeAPI {
     }
   }
 
+  /**
+   * Gets the lock door state based on the device state value.
+   *
+   * @param {number} deviceState - The state value of the device.
+   * @return {number} Returns 1 if the state value is 2 or higher; otherwise, returns the device state value.
+   */
   getLockDoorState(deviceState) {
     if (deviceState >= 2) {
       return 1;
@@ -1584,6 +1922,12 @@ module.exports = class WyzeAPI {
     }
   }
 
+  /**
+   * Gets the leak sensor state based on the device state value.
+   *
+   * @param {number} deviceState - The state value of the device.
+   * @return {number} Returns 1 if the state value is 2 or higher; otherwise, returns the device state value.
+   */
   getLeakSensorState(deviceState) {
     if (deviceState >= 2) {
       return 1;
@@ -1592,6 +1936,12 @@ module.exports = class WyzeAPI {
     }
   }
 
+  /**
+   * Determines the lock state based on the device state value.
+   *
+   * @param {number} deviceState - The state value of the device.
+   * @return {number} Returns 0 if the state value is 2; otherwise, returns 1.
+   */
   getLockState(deviceState) {
     if (deviceState == 2) {
       return 0;
@@ -1600,61 +1950,146 @@ module.exports = class WyzeAPI {
     }
   }
 
+  /**
+   * Checks the battery voltage and ensures it is within a valid range.
+   *
+   * @param {number} value - The battery voltage to be checked.
+   * @return {number} A value of 100 if the input is 100 or more; returns 1 if the input is undefined or null; otherwise, returns the input value.
+   */
   checkBatteryVoltage(value) {
     if (value >= 100) {
       return 100;
-    } else if (value == "undefined" || value == null) {
+    } else if (value === undefined || value === null) {
       return 1;
     } else {
       return value;
     }
   }
-  
+
+  /**
+   * Checks if the battery voltage is below the defined low battery percentage threshold.
+   *
+   * @param {number} batteryVolts - The current battery voltage to be checked.
+   * @return {number} Returns 1 if the battery voltage is less than or equal to the low battery percentage threshold; otherwise, returns 0.
+   */
   checkLowBattery(batteryVolts) {
     if (this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {
       return 1;
-    } else return 0;
+    } else {
+      return 0;
+    }
   }
 
+  /**
+   * Converts a value from a specified range to a normalized float between 0 and 1.
+   *
+   * @param {number} value - The value to be normalized.
+   * @param {number} min - The minimum value of the original range.
+   * @param {number} max - The maximum value of the original range.
+   * @return {number} The normalized float value between 0 and 1.
+   */
   rangeToFloat(value, min, max) {
     return (value - min) / (max - min);
   }
 
+  /**
+   * Converts a normalized float value between 0 and 1 to a value within a specified range.
+   *
+   * @param {number} value - The normalized float value between 0 and 1.
+   * @param {number} min - The minimum value of the desired range.
+   * @param {number} max - The maximum value of the desired range.
+   * @return {number} The value within the specified range, rounded to the nearest integer.
+   */
   floatToRange(value, min, max) {
     return Math.round(value * (max - min) + min);
   }
 
+  /**
+   * Converts a temperature value from Kelvin to Mired.
+   *
+   * @param {number} value - The temperature in Kelvin to be converted.
+   * @return {number} The temperature in Mired, rounded to the nearest integer.
+   */
   kelvinToMired(value) {
     return Math.round(1000000 / value);
   }
 
+  /**
+   * Checks if a brightness value is within the valid range (1 to 100).
+   * 
+   * @param {number} value - The brightness value to be checked.
+   * @return {number} The original brightness value if it's within the valid range; otherwise, returns the same value (potentially unaltered logic).
+   */
   checkBrightnessValue(value) {
-    if (value >= 1 || value <= 100) {
+    if (value >= 1 && value <= 100) {
       return value;
-    } else return value;
-  }
-
-  checkColorTemp(color) {
-    if (color >= 500) {
-      return 500;
     } else {
-      return color;
+      return value; // This logic might need adjustment to handle out-of-range values.
     }
   }
 
+  /**
+   * Ensures that a color temperature value is not below a minimum threshold.
+   *
+   * @param {number} color - The color temperature value to be checked.
+   * @return {number} The color temperature value if it's 500 or above; otherwise, returns 500.
+   */
+  checkColorTemp(color) {
+    if (color >= 500) {
+      return color;
+    } else {
+      return 500;
+    }
+  }
+
+  /**
+   * Converts a temperature from Fahrenheit to Celsius.
+   *
+   * @param {number} fahrenheit - The temperature in Fahrenheit to be converted.
+   * @return {number} The equivalent temperature in Celsius.
+   */
   fahrenheit2celsius(fahrenheit) {
     return (fahrenheit - 32.0) / 1.8;
   }
 
+  /**
+   * Converts a temperature from Celsius to Fahrenheit.
+   *
+   * @param {number} celsius - The temperature in Celsius to be converted.
+   * @return {number} The equivalent temperature in Fahrenheit.
+   */
   celsius2fahrenheit(celsius) {
     return celsius * 1.8 + 32.0;
   }
 
+  /**
+   * Clamps a number within a specified range.
+   *
+   * @param {number} number - The number to be clamped.
+   * @param {number} min - The minimum value to clamp to.
+   * @param {number} max - The maximum value to clamp to.
+   * @return {number} The clamped value, which is between min and max.
+   */
   clamp(number, min, max) {
     return Math.max(min, Math.min(number, max));
   }
 
-  sleep(seconds) {
+  /**
+  * Sleep for a specified number of seconds.
+  * @param {number} ms - The number of seconds to sleep.
+  * @returns {Promise<void>} - A promise that resolves after the specified time.
+  */
+  sleepSeconds(seconds) {
     return new Promise((resolve) => setTimeout(resolve, seconds * 1000));
   }
+
+  /**
+  * Sleep for a specified number of milliseconds.
+  * @param {number} ms - The number of milliseconds to sleep.
+  * @returns {Promise<void>} - A promise that resolves after the specified time.
+  */
+  async sleepMilliSecounds(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
 };
