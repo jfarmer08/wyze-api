@@ -57,6 +57,45 @@ function oliveCreateHmsPatchPayload(hms_id) {
   };
 }
 
+function oliveCreateGetPayloadIrrigation(device_mac) {
+  return {
+    device_id: device_mac,
+    nonce: Date.now().toString(),
+  };
+}
+
+function oliveCreatePostPayloadIrrigationStop(device_mac, action) {
+  return {
+    device_id: device_mac,
+    nonce: Date.now().toString(),
+    action: action,
+  };
+}
+
+function oliveCreatePostPayloadIrrigationQuickRun(
+  device_mac,
+  zone_number,
+  duration
+) {
+  return {
+    device_id: device_mac,
+    nonce: Date.now().toString(),
+    zone_runs: [
+      {
+        zone_number: zone_number,
+        duration: duration,
+      },
+    ],
+  };
+}
+
+function oliveCreateGetPayloadIrrigationScheduleRuns(device_mac) {
+  return {
+    device_id: device_mac,
+    nonce: Date.now().toString(),
+  };
+}
+
 module.exports = {
   fordCreatePayload,
   oliveCreateGetPayload,
@@ -65,4 +104,8 @@ module.exports = {
   oliveCreateUserInfoPayload,
   oliveCreateHmsGetPayload,
   oliveCreateHmsPatchPayload,
+  oliveCreateGetPayloadIrrigation,
+  oliveCreatePostPayloadIrrigationStop,
+  oliveCreatePostPayloadIrrigationQuickRun,
+  oliveCreateGetPayloadIrrigationScheduleRuns,
 };

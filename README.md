@@ -140,8 +140,17 @@ Use these helper methods to interact with wyze-api.
 - wyze.setHMSState(hms_id, mode)
 - wyze.getHmsUpdate(hms_id)
 
-## Internal methods
+### Thermostat Methods
 
+
+## Irrigation (Sprinker) Methods
+- wyze.irrigationGetDeviceInfo(deviceMac)
+- wyze.irrigationGetZones(deviceMac)
+- wyze.irrigationQuickRun(deviceMac, zoneNumber, duration)
+- wyze.irrigationStop(deviceMac)
+- wyze.irrigationGetScheduleRuns(deviceMac)
+
+## Internal methods
 - wyze.login()
 - wyze.maybeLogin()
 - wyze.refreshToken()
@@ -159,8 +168,12 @@ Use these helper methods to interact with wyze-api.
 - wyze.getPlanBindingListByUser()
 - wyze.monitoringProfileStateStatus(hms_id)
 - wyze.monitoringProfileActive(hms_id, home, away)
+- wyze.getPlanBindingListByUser()
 - wyze.thermostatGetIotProp(device.mac)
 - wyze.thermostatSetIotProp(device.mac, device.product_model, propKey, value)
+- wyze.thermostatGetIotProp(deviceMac, keys)
+- wyze.irrigationGetIotProp(deviceMac)
+
 
 ## Other Info
 
@@ -168,3 +181,4 @@ Special thanks to the following projects for reference and inspiration:
 
 - [ha-wyzeapi](https://github.com/JoshuaMulliken/ha-wyzeapi), a Wyze integration for Home Assistant.
 - [wyze-node](https://github.com/noelportugal/wyze-node), a Node library for the Wyze API.
+- [wyzeapy](https://github.com/SecKatie/wyzeapy), a Python library for the Wyze API.

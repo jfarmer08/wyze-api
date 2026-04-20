@@ -869,7 +869,7 @@ module.exports = class WyzeAPI {
       headers: {
         "Accept-Encoding": "gzip",
         "Content-Type": "application/json",
-        "User-Agent": "myapp",
+        "User-Agent": this.userAgent,
         appid: constants.oliveAppId,
         appinfo: constants.appInfo,
         phoneid: this.phoneId,
@@ -912,7 +912,7 @@ module.exports = class WyzeAPI {
     let config = {
       headers: {
         "Accept-Encoding": "gzip",
-        "User-Agent": "myapp",
+        "User-Agent": this.userAgent,
         appid: constants.oliveAppId,
         appinfo: constants.appInfo,
         phoneid: this.phoneId,
@@ -1182,7 +1182,7 @@ module.exports = class WyzeAPI {
       headers: {
         "Accept-Encoding": "gzip",
         "Content-Type": "application/json",
-        "User-Agent": "myapp",
+        "User-Agent": this.userAgent,
         appid: constants.oliveAppId,
         appinfo: constants.appInfo,
         phoneid: this.phoneId,
@@ -1215,6 +1215,7 @@ module.exports = class WyzeAPI {
     }
   }
 
+<<<<<<< HEAD
 
   /**
    * Sends a command to a local smart bulb device to set a specific property value.
@@ -1238,6 +1239,283 @@ module.exports = class WyzeAPI {
     ];
 
     // Construct the characteristics object
+=======
+  async irrigationGetIotProp(deviceMac) {
+    await this.maybeLogin();
+    let keys =
+      "zone_state,iot_state,iot_state_update_time,app_version,RSSI,wifi_mac,sn,device_model,ssid,IP";
+    let payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
+    payload.keys = keys;
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = `${constants.irrigationBaseUrl}get_iot_prop`;
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
+        this.log(
+          `API response IrrigationGetIotProp: ${JSON.stringify(result.data)}`
+        );
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response IrrigationGetIotProp (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async irrigationGetDeviceInfo(deviceMac) {
+    await this.maybeLogin();
+    let keys =
+      "wiring,sensor,enable_schedules,notification_enable,notification_watering_begins,notification_watering_ends,notification_watering_is_skipped,skip_low_temp,skip_wind,skip_rain,skip_saturation";
+    let payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
+    payload.keys = keys;
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = `${constants.irrigationBaseUrl}device_info`;
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
+        this.log(
+          `API response IrrigationGetDeviceInfo: ${JSON.stringify(result.data)}`
+        );
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response IrrigationGetDeviceInfo (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async irrigationGetZones(deviceMac) {
+    await this.maybeLogin();
+    let payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = `${constants.irrigationBaseUrl}zone`;
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
+        this.log(
+          `API response IrrigationGetZones: ${JSON.stringify(result.data)}`
+        );
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response IrrigationGetZones (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async irrigationQuickRun(deviceMac, zoneNumber, duration) {
+    await this.maybeLogin();
+    let payload = payloadFactory.oliveCreatePostPayloadIrrigationQuickRun(
+      deviceMac,
+      zoneNumber,
+      duration
+    );
+    let signature = crypto.oliveCreateSignatureSingle(
+      JSON.stringify(payload),
+      this.access_token
+    );
+    const config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "Content-Type": "application/json",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+    };
+
+    try {
+      const url = `${constants.irrigationBaseUrl}quickrun`;
+      const result = await axios.post(url, JSON.stringify(payload), config);
+      if (this.apiLogEnabled) {
+        this.log(
+          `API response IrrigationQuickRun: ${JSON.stringify(result.data)}`
+        );
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response IrrigationQuickRun (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async irrigationStop(deviceMac) {
+    await this.maybeLogin();
+    let payload = payloadFactory.oliveCreatePostPayloadIrrigationStop(
+      deviceMac,
+      "STOP"
+    );
+    let signature = crypto.oliveCreateSignatureSingle(
+      JSON.stringify(payload),
+      this.access_token
+    );
+    const config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "Content-Type": "application/json",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+    };
+
+    try {
+      const url = `${constants.irrigationBaseUrl}runningschedule`;
+      const result = await axios.post(url, JSON.stringify(payload), config);
+      if (this.apiLogEnabled) {
+        this.log(`API response IrrigationStop: ${JSON.stringify(result.data)}`);
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response IrrigationStop (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  async irrigationGetScheduleRuns(deviceMac, limit = 2) {
+    await this.maybeLogin();
+    let payload =
+      payloadFactory.oliveCreateGetPayloadIrrigationScheduleRuns(deviceMac);
+    payload.limit = limit;
+    let signature = crypto.oliveCreateSignature(payload, this.access_token);
+    let config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    try {
+      const url = `${constants.irrigationBaseUrl}schedule_runs`;
+      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
+        this.log(
+          `API response IrrigationGetScheduleRuns: ${JSON.stringify(
+            result.data
+          )}`
+        );
+      }
+
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e}`);
+
+      if (e.response) {
+        this.log.error(
+          `Response IrrigationGetScheduleRuns (${
+            e.response.statusText
+          }): ${JSON.stringify(e.response.data, null, "\t")}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  //Still needs work. Unable to get the Encrypt correct
+  async localBulbCommand(
+    deviceMac,
+    deviceEnr,
+    deviceIp,
+    propertyId,
+    propertyValue
+  ) {
+>>>>>>> e445f28 (feat: add irrigation support)
     const characteristics = {
       mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
       index: '1', // Fixed index value
