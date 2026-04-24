@@ -25,5 +25,6 @@ module.exports = Object.freeze({
 
   // IoT3 API (used by Lock Bolt V2 and Palm lock)
   iot3BaseUrl: "https://app.wyzecam.com",
+  iot3AppVersion: "3.11.0.758",
   iot3AppInfo: "wyze_android_3.11.0.758",
 });

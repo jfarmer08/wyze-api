@@ -1714,22 +1714,16 @@ module.exports = class WyzeAPI {
     return parts.length >= 3 ? parts.slice(0, 2).join("_") : deviceMac;
   }
 
-  _iot3ComputeSignature(bodyStr) {
-    const accessKey = this.access_token + this.oliveSigningSecret;
-    const secret = nodeCrypto.createHash("md5").update(accessKey).digest("hex");
-    return nodeCrypto.createHmac("md5", secret).update(bodyStr).digest("hex");
-  }
-
   _iot3BuildHeaders(bodyStr) {
     return {
       access_token: this.access_token,
       appid: this.oliveAppId,
       appinfo: constants.iot3AppInfo,
-      appversion: constants.iot3AppInfo.replace("wyze_android_", ""),
+      appversion: constants.iot3AppVersion,
       env: "Prod",
       phoneid: this.phoneId,
       requestid: nodeCrypto.randomBytes(16).toString("hex"),
-      Signature2: this._iot3ComputeSignature(bodyStr),
+      Signature2: crypto.iot3CreateSignature(bodyStr, this.access_token),
       "Content-Type": "application/json; charset=utf-8",
     };
   }
@@ -1737,52 +1731,43 @@ module.exports = class WyzeAPI {
   async _iot3Post(urlPath, payload) {
     const body = JSON.stringify(payload);
     const headers = this._iot3BuildHeaders(body);
-    const response = await axios.post(`${constants.iot3BaseUrl}${urlPath}`, body, { headers });
-    return response.data;
+    const url = `${constants.iot3BaseUrl}${urlPath}`;
+    if (this.apiLogEnabled) {
+      this.log.info(`Performing request: ${url}`);
+    }
+    try {
+      const response = await axios.post(url, body, { headers });
+      if (this.apiLogEnabled) {
+        this.log.info(`API response IoT3 ${urlPath}: ${JSON.stringify(response.data)}`);
+      }
+      return response.data;
+    } catch (error) {
+      this.log.error(`Request failed: ${error.message}`);
+      if (error.response) {
+        this.log.error(`Response IoT3 ${urlPath} (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
+      }
+      throw error;
+    }
   }
 
   async iot3GetProperties(deviceMac, deviceModel, props) {
     await this.maybeLogin();
-    const ts = Date.now();
-    const payload = {
-      nonce: String(ts),
-      payload: {
-        cmd: "get_property",
-        props,
-        tid: Math.floor(Math.random() * 89000) + 10000,
-        ts,
-        ver: 1,
-      },
-      targetInfo: {
-        id: deviceMac,
-        model: this._iot3ExtractModel(deviceMac, deviceModel),
-      },
-    };
+    const payload = payloadFactory.iot3CreateGetPayload(
+      deviceMac,
+      this._iot3ExtractModel(deviceMac, deviceModel),
+      props
+    );
     return this._iot3Post("/app/v4/iot3/get-property", payload);
   }
 
   async iot3RunAction(deviceMac, deviceModel, action) {
     await this.maybeLogin();
-    const ts = Date.now();
-    const payload = {
-      nonce: String(ts),
-      payload: {
-        action,
-        cmd: "run_action",
-        params: {
-          action_id: Math.floor(Math.random() * 89999) + 10000,
-          type: 1,
-          username: this.username,
-        },
-        tid: Math.floor(Math.random() * 89000) + 10000,
-        ts,
-        ver: 1,
-      },
-      targetInfo: {
-        id: deviceMac,
-        model: this._iot3ExtractModel(deviceMac, deviceModel),
-      },
-    };
+    const payload = payloadFactory.iot3CreateRunActionPayload(
+      deviceMac,
+      this._iot3ExtractModel(deviceMac, deviceModel),
+      action,
+      this.username
+    );
     return this._iot3Post("/app/v4/iot3/run-action", payload);
   }
 
@@ -1803,6 +1788,15 @@ module.exports = class WyzeAPI {
 
   async lockBoltV2Unlock(deviceMac, deviceModel) {
     return this.iot3RunAction(deviceMac, deviceModel, "lock::unlock");
+  }
+
+  async palmLockGetProperties(deviceMac, deviceModel) {
+    return this.iot3GetProperties(deviceMac, deviceModel, [
+      "lock::lock-status",
+      "battery::battery-level",
+      "iot-device::iot-state",
+      "device-info::firmware-ver",
+    ]);
   }
 
   /**

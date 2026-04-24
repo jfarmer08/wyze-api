@@ -130,6 +130,14 @@ Use these helper methods to interact with wyze-api.
 - wyze.unlockLock(device)
 - wyze.lockInfo(device)
 
+### Lock Bolt V2 Methods (DX_LB2)
+- wyze.lockBoltV2GetProperties(device.mac, device.product_model)
+- wyze.lockBoltV2Lock(device.mac, device.product_model)
+- wyze.lockBoltV2Unlock(device.mac, device.product_model)
+
+### Palm Lock Methods (DX_PVLOC)
+- wyze.palmLockGetProperties(device.mac, device.product_model)
+
 ### Garage Door Methods
 - wyze.garageDoor(device.mac, device.product_model)
 
@@ -141,7 +149,6 @@ Use these helper methods to interact with wyze-api.
 ### Thermostat Methods
 - wyze.thermostatGetIotProp(device.mac)
 - wyze.thermostatSetIotProp(device.mac, device.product_model, propKey, value)
-- wyze.thermostatGetIotProp(device.mac, keys)
 
 ### Irrigation (Sprinker) Methods
 - wyze.irrigationGetDeviceInfo(device.mac)
@@ -169,7 +176,8 @@ Use these helper methods to interact with wyze-api.
 - wyze.getPlanBindingListByUser()
 - wyze.monitoringProfileStateStatus(hms_id)
 - wyze.monitoringProfileActive(hms_id, home, away)
-- wyze.getPlanBindingListByUser()
+- wyze.iot3GetProperties(deviceMac, deviceModel, props)
+- wyze.iot3RunAction(deviceMac, deviceModel, action)
 
 ## Other Info
 
