@@ -15,8 +15,6 @@ This is an unofficial Wyze API. This library uses the internal APIs from the Wyz
 ## Example
 ```
 const Wyze = require('wyze-api')
-const Logger = require("@ptkdev/logger")
-const logger = new Logger()
 
 const options = {
   username: process.env.username,
@@ -26,14 +24,14 @@ const options = {
   persistPath: "./",
   logLevel: "none"
 }
-const wyze = new Wyze(options, logger)
+const wyze = new Wyze(options)
 
   ; (async () => {
     let device, state, result
 
     // Get all Wyze devices
     const devices = await wyze.getDeviceList()
-    console.log(devices)
+    console.log(devices); // you could also use apiLogEnabled in options instead of your own console.log
 
     // Get a Wyze Bulb by name and turn it off.
     device = await wyze.getDeviceByName('Porch Light')
