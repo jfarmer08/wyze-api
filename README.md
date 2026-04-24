@@ -141,14 +141,17 @@ Use these helper methods to interact with wyze-api.
 - wyze.getHmsUpdate(hms_id)
 
 ### Thermostat Methods
+- wyze.thermostatGetIotProp(device.mac)
+- wyze.thermostatSetIotProp(device.mac, device.product_model, propKey, value)
+- wyze.thermostatGetIotProp(deviceMac, keys)
 
-
-## Irrigation (Sprinker) Methods
+### Irrigation (Sprinker) Methods
 - wyze.irrigationGetDeviceInfo(deviceMac)
 - wyze.irrigationGetZones(deviceMac)
 - wyze.irrigationQuickRun(deviceMac, zoneNumber, duration)
 - wyze.irrigationStop(deviceMac)
 - wyze.irrigationGetScheduleRuns(deviceMac)
+- wyze.irrigationGetIotProp(deviceMac)
 
 ## Internal methods
 - wyze.login()
@@ -169,11 +172,6 @@ Use these helper methods to interact with wyze-api.
 - wyze.monitoringProfileStateStatus(hms_id)
 - wyze.monitoringProfileActive(hms_id, home, away)
 - wyze.getPlanBindingListByUser()
-- wyze.thermostatGetIotProp(device.mac)
-- wyze.thermostatSetIotProp(device.mac, device.product_model, propKey, value)
-- wyze.thermostatGetIotProp(deviceMac, keys)
-- wyze.irrigationGetIotProp(deviceMac)
-
 
 ## Other Info
 

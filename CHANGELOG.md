@@ -1,6 +1,9 @@
 # wyze-api
 
 ## Releases
+### v1.1.8
+- Add irrigation/sprinkler support: `irrigationGetIotProp`, `irrigationGetDeviceInfo`, `irrigationGetZones`, `irrigationQuickRun`, `irrigationStop`, `irrigationGetScheduleRuns`
+
 ### v1.1.7
 - Change Logging
 
