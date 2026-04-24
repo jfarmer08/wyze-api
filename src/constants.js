@@ -23,6 +23,4 @@ module.exports = Object.freeze({
   apiBaseUrl: "https://api.wyzecam.com",
   irrigationBaseUrl: "https://wyze-lockwood-service.wyzecam.com/plugin/irrigation/",
 
-  // Models
-  irrigationModel: "BS_WK1",
 });
