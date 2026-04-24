@@ -37,7 +37,7 @@ const wyze = new Wyze(options, logger)
 
     // Get a Wyze Bulb by name and turn it off.
     device = await wyze.getDeviceByName('Porch Light')
-    result = await wyze.turnOff(device)
+    result = await wyze.lightTurnOff(device.mac, device.product_model)
     console.log(result)
 
     // Get the state of a Wyze Sense contact sensor
@@ -53,8 +53,9 @@ const wyze = new Wyze(options, logger)
 
 ## Helper methods
 
-Use this helper methods to interact with wyze-api.
+Use these helper methods to interact with wyze-api.
 
+### Generic Device Methods
 - wyze.getDeviceList()
 - wyze.getDeviceByName(nickname)
 - wyze.getDeviceByMac(mac)
@@ -62,35 +63,104 @@ Use this helper methods to interact with wyze-api.
 - wyze.getDevicesByModel(model)
 - wyze.getDeviceGroupsList()
 - wyze.getDeviceSortList()
-- wyze.turnOn(device)
-- wyze.turnOff(device)
-- wyze.lock(device)
-- wyze.unlock(device)
 - wyze.getDeviceStatus(device)
 - wyze.getDeviceState(device)
+- wyze.getDevicePID(device.mac, device.product_model)
+- wyze.getDeviceStatePID(device.mac, device.product_model, pid)
 
+### Camera Methods
+- wyze.cameraPrivacy(device.mac, device.product_model, value)
+- wyze.cameraTurnOn(device.mac, device.product_model)
+- wyze.cameraTurnOff(device.mac, device.product_model)
+- wyze.cameraSiren(device.mac, device.product_model, value)
+- wyze.cameraSirenOn(device.mac, device.product_model)
+- wyze.cameraSirenOff(device.mac, device.product_model)
+- wyze.cameraFloodLight(device.mac, device.product_model, value)
+- wyze.cameraFloodLightOn(device.mac, device.product_model)
+- wyze.cameraFloodLightOff(device.mac, device.product_model)
+- wyze.cameraSpotLight(device.mac, device.product_model, value)
+- wyze.cameraSpotLightOn(device.mac, device.product_model)
+- wyze.cameraSpotLightOff(device.mac, device.product_model)
+- wyze.cameraMotionOn(device.mac, device.product_model)
+- wyze.cameraMotionOff(device.mac, device.product_model)
+- wyze.cameraSoundNotificationOn(device.mac, device.product_model)
+- wyze.cameraSoundNotificationOff(device.mac, device.product_model)
+- wyze.cameraNotifications(device.mac, device.product_model, value)
+- wyze.cameraNotificationsOn(device.mac, device.product_model)
+- wyze.cameraNotificationsOff(device.mac, device.product_model)
+- wyze.cameraMotionRecording(device.mac, device.product_model, value)
+- wyze.cameraMotionRecordingOn(device.mac, device.product_model)
+- wyze.cameraMotionRecordingOff(device.mac, device.product_model)
 
+### Plug Methods
+- wyze.plugPower(device.mac, device.product_model, value)
+- wyze.plugTurnOn(device.mac, device.product_model)
+- wyze.plugTurnOff(device.mac, device.product_model)
+
+### Light Bulb Methods
+- wyze.lightPower(device.mac, device.product_model, value)
+- wyze.lightTurnOn(device.mac, device.product_model)
+- wyze.lightTurnOff(device.mac, device.product_model)
+- wyze.setBrightness(device.mac, device.product_model, value)
+- wyze.setColorTemperature(device.mac, device.product_model, value)
+
+### Mesh Light/Plug Methods
+- wyze.turnMeshOn(device.mac, device.product_model)
+- wyze.turnMeshOff(device.mac, device.product_model)
+- wyze.lightMeshPower(device.mac, device.product_model, value)
+- wyze.lightMeshOn(device.mac, device.product_model)
+- wyze.lightMeshOff(device.mac, device.product_model)
+- wyze.setMeshBrightness(device.mac, device.product_model, value)
+- wyze.setMeshColorTemperature(device.mac, device.product_model, value)
+- wyze.setMeshHue(device.mac, device.product_model, value)
+- wyze.setMeshSaturation(device.mac, device.product_model, value)
+
+### Wall Switch Methods
+- wyze.wallSwitchPower(device.mac, device.product_model, value)
+- wyze.wallSwitchPowerOn(device.mac, device.product_model)
+- wyze.wallSwitchPowerOff(device.mac, device.product_model)
+- wyze.wallSwitchIot(device.mac, device.product_model, value)
+- wyze.wallSwitchIotOn(device.mac, device.product_model)
+- wyze.wallSwitchIotOff(device.mac, device.product_model)
+- wyze.wallSwitchLedStateOn(device.mac, device.product_model)
+- wyze.wallSwitchLedStateOff(device.mac, device.product_model)
+- wyze.wallSwitchVacationModeOn(device.mac, device.product_model)
+- wyze.wallSwitchVacationModeOff(device.mac, device.product_model)
+
+### Lock Methods
+- wyze.lockLock(device)
+- wyze.unlockLock(device)
+- wyze.lockInfo(device)
+
+### Garage Door Methods
+- wyze.garageDoor(device.mac, device.product_model)
+
+### Home Monitoring System (HMS) Methods
+- wyze.getHmsID()
+- wyze.setHMSState(hms_id, mode)
+- wyze.getHmsUpdate(hms_id)
 
 ## Internal methods
 
 - wyze.login()
-- wyze.getRefreshToken()
+- wyze.maybeLogin()
+- wyze.refreshToken()
 - wyze.getObjectList()
-- wyze.runAction(instanceId, providerKey, actionKey)
-- wyze.getDeviceInfo(deviceMac, deviceModel)
-- wyze.getPropertyList(deviceMac, deviceModel)
-- wyze.setProperty(deviceMac, deviceModel, propertyId, propertyValue)
-- wyze.controllock(deviceMac, deviceModel, action)
-- wyze.getLockInfo(deviceMac, deviceModel)
-- wyze.getIotProp(deviceMac, keys)
-- wyze.setIotProp(deviceMac, product_model, propKey, value)
+- wyze.getPropertyList(device.mac, device.product_model)
+- wyze.setProperty(device.mac, device.product_model, propertyId, propertyValue)
+- wyze.runAction(device.mac, device.product_model, actionKey)
+- wyze.runActionList(device.mac, device.product_model, propertyId, propertyValue, actionKey)
+- wyze.controlLock(device.mac, device.product_model, action)
+- wyze.getLockInfo(device.mac, device.product_model)
+- wyze.getIotProp(device.mac)
+- wyze.setIotProp(device.mac, device.product_model, propKey, value)
 - wyze.getUserProfile()
 - wyze.disableRemeAlarm(hms_id)
 - wyze.getPlanBindingListByUser()
 - wyze.monitoringProfileStateStatus(hms_id)
 - wyze.monitoringProfileActive(hms_id, home, away)
-- wyze.getPlanBindingListByUser()
-- wyze.thermostatGetIotProp(deviceMac, keys)
+- wyze.thermostatGetIotProp(device.mac)
+- wyze.thermostatSetIotProp(device.mac, device.product_model, propKey, value)
 
 ## Other Info
 

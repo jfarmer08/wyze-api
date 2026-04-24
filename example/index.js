@@ -22,7 +22,7 @@ const options = {
 
 logger.debug(`Starting WyzeAPI with options: ${JSON.stringify(options)}`);
 
-const wyze = new WyzeAPI(options, logger);
+const wyze = new WyzeAPI(options);
 
 async function loginCheck(iterations = 2) {
   var count = 0;
