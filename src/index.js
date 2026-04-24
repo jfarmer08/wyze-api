@@ -1215,31 +1215,7 @@ module.exports = class WyzeAPI {
     }
   }
 
-<<<<<<< HEAD
-
-  /**
-   * Sends a command to a local smart bulb device to set a specific property value.
-   *
-   * @param {string} deviceMac - The MAC address of the device.
-   * @param {string} deviceModel - The model of the device.
-   * @param {string} deviceEnr - The encrypted device identifier.
-   * @param {string} deviceIp - The IP address of the device.
-   * @param {string} propertyId - The ID of the property to set.
-   * @param {string|number} propertyValue - The value to set for the property.
-   * @param {string} actionKey - The action key used for the command (for future use).
-   * @return {Promise<void>} A promise that resolves when the command is sent or handles errors if the command fails.
-   */
-  async localBulbCommand(deviceMac, deviceModel, deviceEnr, deviceIp, propertyId, propertyValue, actionKey) {
-    // Log the start of the command process
-    console.log(`Initiating local command for device ${deviceMac} (${deviceModel}).`);
-
-    // Create a property list with the ID and value
-    const plist = [
-      { pid: propertyId, pvalue: String(propertyValue) }
-    ];
-
     // Construct the characteristics object
-=======
   async irrigationGetIotProp(deviceMac) {
     await this.maybeLogin();
     let keys =
@@ -1515,7 +1491,6 @@ module.exports = class WyzeAPI {
     propertyId,
     propertyValue
   ) {
->>>>>>> e445f28 (feat: add irrigation support)
     const characteristics = {
       mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
       index: '1', // Fixed index value
