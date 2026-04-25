@@ -1514,7 +1514,7 @@ module.exports = class WyzeAPI {
     const characteristics = {
       mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
       index: '1', // Fixed index value
-      ts: moment().valueOf(), // Current timestamp in milliseconds
+      ts: Date.now(),
       plist: plist // Property list with the ID and value
     };
 
