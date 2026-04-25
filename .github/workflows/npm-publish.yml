@@ -8,6 +8,9 @@ on:
   release:
     types: [published]
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,8 +34,21 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org/
+          always-auth: true
       - run: npm ci
+      - name: Validate npm auth
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.npm }}
+      - name: Validate version is unpublished
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if npm view "wyze-api@$VERSION" version >/dev/null 2>&1; then
+            echo "Version $VERSION is already published to npm. Bump package.json version first."
+            exit 1
+          fi
+          echo "Publishing wyze-api@$VERSION"
       - run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{secrets.NPM}}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.npm }}
 
