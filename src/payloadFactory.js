@@ -96,6 +96,47 @@ function oliveCreateGetPayloadIrrigationScheduleRuns(device_mac) {
   };
 }
 
+function iot3CreateGetPayload(deviceMac, model, props) {
+  const ts = Date.now();
+  return {
+    nonce: String(ts),
+    payload: {
+      cmd: "get_property",
+      props,
+      tid: Math.floor(Math.random() * 89000) + 10000,
+      ts,
+      ver: 1,
+    },
+    targetInfo: {
+      id: deviceMac,
+      model,
+    },
+  };
+}
+
+function iot3CreateRunActionPayload(deviceMac, model, action, username) {
+  const ts = Date.now();
+  return {
+    nonce: String(ts),
+    payload: {
+      action,
+      cmd: "run_action",
+      params: {
+        action_id: Math.floor(Math.random() * 90000) + 10000,
+        type: 1,
+        username,
+      },
+      tid: Math.floor(Math.random() * 89000) + 10000,
+      ts,
+      ver: 1,
+    },
+    targetInfo: {
+      id: deviceMac,
+      model,
+    },
+  };
+}
+
 module.exports = {
   fordCreatePayload,
   oliveCreateGetPayload,
@@ -108,4 +149,6 @@ module.exports = {
   oliveCreatePostPayloadIrrigationStop,
   oliveCreatePostPayloadIrrigationQuickRun,
   oliveCreateGetPayloadIrrigationScheduleRuns,
+  iot3CreateGetPayload,
+  iot3CreateRunActionPayload,
 };

@@ -1,6 +1,13 @@
 # wyze-api
 
 ## Releases
+### v1.1.9
+- Add IoT3 API support for Lock Bolt V2 (DX_LB2) and Palm lock (DX_PVLOC)
+- Add `lockBoltV2GetProperties`, `lockBoltV2Lock`, `lockBoltV2Unlock` for Bolt V2
+- Add `palmLockGetProperties` for Palm lock
+- Add `iot3GetProperties` and `iot3RunAction` as general IoT3 methods
+- Add `palm-state` to `getIotProp` property keys
+
 ### v1.1.8
 - Add irrigation/sprinkler support: `irrigationGetIotProp`, `irrigationGetDeviceInfo`, `irrigationGetZones`, `irrigationQuickRun`, `irrigationStop`, `irrigationGetScheduleRuns`
 

@@ -4,6 +4,7 @@ const axios = require("axios");
 const fs = require("fs").promises;
 const path = require("path");
 const getUuid = require("uuid-by-string");
+const nodeCrypto = require("crypto");
 
 const payloadFactory = require("./payloadFactory");
 const crypto = require("./crypto");
@@ -807,7 +808,7 @@ module.exports = class WyzeAPI {
   }
 
   async getIotProp(deviceMac) {
-    const keys = "iot_state,switch-power,switch-iot,single_press_type,double_press_type,triple_press_type,long_press_type";
+    const keys = "iot_state,switch-power,switch-iot,single_press_type,double_press_type,triple_press_type,long_press_type,palm-state";
 
     await this.maybeLogin();
 
@@ -1703,6 +1704,99 @@ module.exports = class WyzeAPI {
 
   async lockInfo(device) {
     return await this.getLockInfo(device.mac, device.product_model);
+  }
+
+  // IoT3 API — used by Lock Bolt V2 (DX_LB2) and Palm lock (DX_PVLOC)
+
+  _iot3ExtractModel(deviceMac, deviceModel) {
+    if (deviceModel) return deviceModel;
+    const parts = deviceMac.split("_");
+    return parts.length >= 3 ? parts.slice(0, 2).join("_") : deviceMac;
+  }
+
+  _iot3BuildHeaders(bodyStr) {
+    return {
+      access_token: this.access_token,
+      appid: this.oliveAppId,
+      appinfo: constants.iot3AppInfo,
+      appversion: constants.iot3AppVersion,
+      env: "Prod",
+      phoneid: this.phoneId,
+      requestid: nodeCrypto.randomBytes(16).toString("hex"),
+      Signature2: crypto.iot3CreateSignature(bodyStr, this.access_token),
+      "Content-Type": "application/json; charset=utf-8",
+    };
+  }
+
+  async _iot3Post(urlPath, payload) {
+    const body = JSON.stringify(payload);
+    const headers = this._iot3BuildHeaders(body);
+    const url = `${constants.iot3BaseUrl}${urlPath}`;
+    if (this.apiLogEnabled) {
+      this.log.info(`Performing request: ${url}`);
+    }
+    try {
+      const response = await axios.post(url, body, { headers });
+      if (this.apiLogEnabled) {
+        this.log.info(`API response IoT3 ${urlPath}: ${JSON.stringify(response.data)}`);
+      }
+      return response.data;
+    } catch (error) {
+      this.log.error(`Request failed: ${error.message}`);
+      if (error.response) {
+        this.log.error(`Response IoT3 ${urlPath} (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
+      }
+      throw error;
+    }
+  }
+
+  async iot3GetProperties(deviceMac, deviceModel, props) {
+    await this.maybeLogin();
+    const payload = payloadFactory.iot3CreateGetPayload(
+      deviceMac,
+      this._iot3ExtractModel(deviceMac, deviceModel),
+      props
+    );
+    return this._iot3Post("/app/v4/iot3/get-property", payload);
+  }
+
+  async iot3RunAction(deviceMac, deviceModel, action) {
+    await this.maybeLogin();
+    const payload = payloadFactory.iot3CreateRunActionPayload(
+      deviceMac,
+      this._iot3ExtractModel(deviceMac, deviceModel),
+      action,
+      this.username
+    );
+    return this._iot3Post("/app/v4/iot3/run-action", payload);
+  }
+
+  async lockBoltV2GetProperties(deviceMac, deviceModel) {
+    return this.iot3GetProperties(deviceMac, deviceModel, [
+      "lock::lock-status",
+      "lock::door-status",
+      "iot-device::iot-state",
+      "battery::battery-level",
+      "battery::power-source",
+      "device-info::firmware-ver",
+    ]);
+  }
+
+  async lockBoltV2Lock(deviceMac, deviceModel) {
+    return this.iot3RunAction(deviceMac, deviceModel, "lock::lock");
+  }
+
+  async lockBoltV2Unlock(deviceMac, deviceModel) {
+    return this.iot3RunAction(deviceMac, deviceModel, "lock::unlock");
+  }
+
+  async palmLockGetProperties(deviceMac, deviceModel) {
+    return this.iot3GetProperties(deviceMac, deviceModel, [
+      "lock::lock-status",
+      "battery::battery-level",
+      "iot-device::iot-state",
+      "device-info::firmware-ver",
+    ]);
   }
 
   /**

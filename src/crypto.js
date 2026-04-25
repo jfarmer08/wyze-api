@@ -82,10 +82,17 @@ function ford_create_signature(url_path, request_method, payload) {
     return crypto.createHash("md5").update(urlencoded).digest("hex")
 }
 
+function iot3CreateSignature(bodyStr, access_token) {
+    const accessKey = access_token + constants.oliveSigningSecret;
+    const secret = crypto.createHash("md5").update(accessKey).digest("hex");
+    return crypto.createHmac("md5", secret).update(bodyStr).digest("hex");
+}
+
 module.exports = {
     fordCreateSignature,
     oliveCreateSignatureSingle,
     oliveCreateSignature,
     olive_create_signature,
-    ford_create_signature
+    ford_create_signature,
+    iot3CreateSignature,
 }
