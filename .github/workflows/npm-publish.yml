@@ -36,10 +36,18 @@ jobs:
           registry-url: https://registry.npmjs.org/
           always-auth: true
       - run: npm ci
+      - name: Ensure NPM_TOKEN is configured
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret is missing. Add a granular npm token with Bypass 2FA enabled."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Validate npm auth
         run: npm whoami
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.npm }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
       - name: Validate version is unpublished
         run: |
           VERSION=$(node -p "require('./package.json').version")
@@ -50,5 +58,5 @@ jobs:
           echo "Publishing wyze-api@$VERSION"
       - run: npm publish --access public
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN || secrets.npm }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
