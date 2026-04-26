@@ -88,6 +88,24 @@ function iot3CreateSignature(bodyStr, access_token) {
     return crypto.createHmac("md5", secret).update(bodyStr).digest("hex");
 }
 
+// Venus / WpkNet signing scheme.
+// See wyze_sdk.signature.RequestVerifier.generate_dynamic_signature:
+//   key  = md5(access_token + signing_secret)
+//   sig  = hmac_md5(key, body).hexdigest()
+// `body` is the JSON-stringified payload for POST (with `nonce` injected),
+// or the sorted "k=v&k=v" param string for GET (with `nonce` injected).
+function venusGenerateDynamicSignature(body, access_token) {
+    const accessKey = `${access_token}${constants.venusSigningSecret}`
+    const secret = crypto.createHash("md5").update(accessKey).digest("hex")
+    return crypto.createHmac("md5", secret).update(body).digest("hex")
+}
+
+// Venus `requestid` header: md5(md5(String(nonce))).
+function venusRequestId(nonce) {
+    const inner = crypto.createHash("md5").update(String(nonce)).digest("hex")
+    return crypto.createHash("md5").update(inner).digest("hex")
+}
+
 function web_create_signature(payload, access_token) {
     let body
 
@@ -114,4 +132,6 @@ module.exports = {
     ford_create_signature,
     iot3CreateSignature,
     web_create_signature,
+    venusGenerateDynamicSignature,
+    venusRequestId,
 }

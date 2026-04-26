@@ -12,6 +12,13 @@ const constants = require("./constants");
 const util = require("./util");
 const RokuAuthLib = require("./rokuAuth")
 const cameraStreamCapture = require("./cameraStreamCapture");
+const types = require("./types");
+
+const {
+  VacuumControlType,
+  VacuumControlValue,
+  VacuumPreferenceType,
+} = types;
 
 module.exports = class WyzeAPI {
   constructor(options) {
@@ -1564,6 +1571,343 @@ module.exports = class WyzeAPI {
     print(token)
   }
 
+  // Wyze Robot Vacuum (Venus service) — JA_RO2.
+  //
+  // Auth/signing scheme (different from olive/earth/web): per request,
+  //   nonce       = Date.now() (ms)
+  //   requestid   = md5(md5(String(nonce)))
+  //   signature2  = HMAC-MD5(key=md5(access_token + venusSigningSecret), body)
+  // For POST: `nonce` (string) is injected into the JSON body before signing,
+  // and the signed body is the no-whitespace JSON.stringify of that payload.
+  // For GET: `nonce` (number) is added to params; the signed body is the
+  // sorted "k=v&k=v" param string (raw values, no URL encoding).
+  // Reference: wyze-sdk WpkNetServiceClient and VenusServiceClient.
+
+  _venusBuildHeaders(nonce, signature) {
+    return {
+      "Accept-Encoding": "gzip",
+      "User-Agent": this.userAgent,
+      access_token: this.access_token,
+      appid: constants.venusAppId,
+      appinfo: this.appInfo,
+      phoneid: this.phoneId,
+      requestid: crypto.venusRequestId(nonce),
+      signature2: signature,
+    };
+  }
+
+  _venusSortedQuery(params) {
+    return Object.keys(params)
+      .sort()
+      .map((key) => `${key}=${params[key]}`)
+      .join("&");
+  }
+
+  async _venusRequest(method, path, payload = {}) {
+    await this.maybeLogin();
+
+    const nonce = Date.now();
+    const url = `${constants.venusBaseUrl}${path}`;
+    const verb = method.toUpperCase();
+
+    let response;
+    try {
+      if (verb === "GET") {
+        const params = { ...payload, nonce };
+        const signature = crypto.venusGenerateDynamicSignature(
+          this._venusSortedQuery(params),
+          this.access_token
+        );
+        const headers = this._venusBuildHeaders(nonce, signature);
+        if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+        response = await axios.get(url, { headers, params });
+      } else {
+        const body = { ...payload, nonce: String(nonce) };
+        const bodyStr = JSON.stringify(body);
+        const signature = crypto.venusGenerateDynamicSignature(bodyStr, this.access_token);
+        const headers = {
+          ...this._venusBuildHeaders(nonce, signature),
+          "Content-Type": "application/json; charset=utf-8",
+        };
+        if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+        response = await axios.request({ url, method: verb, headers, data: bodyStr });
+      }
+    } catch (e) {
+      this.log.error(`Request failed: ${e.message}`);
+      if (e.response) {
+        this.log.error(
+          `Response Venus ${verb} ${path} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+        );
+      }
+      throw e;
+    }
+
+    if (this.apiLogEnabled) {
+      this.log.info(`API response Venus ${verb} ${path}: ${JSON.stringify(response.data)}`);
+    }
+    return response.data;
+  }
+
+  /**
+   * Opt-in analytics ping that mirrors what the Wyze app fires after each
+   * vacuum control action. Not required for controls to take effect — call
+   * it only if you want to look identical to the official client on the
+   * wire (e.g. for telemetry-sensitive accounts).
+   *
+   * @param {string} mac
+   * @param {number} typeCode — VacuumControlType code
+   * @param {number} valueCode — VacuumControlValue code
+   * @param {string[]} args — VenusDotArg1/2/3 strings; positional arg1..argN
+   */
+  async vacuumEventTracking(mac, typeCode, valueCode, args = []) {
+    const payload = {
+      uuid: constants.vacuumEventTrackingUuid,
+      deviceId: mac,
+      createTime: String(Date.now()),
+      mcuSysVersion: constants.vacuumFirmwareVersion,
+      appVersion: this.appVersion,
+      pluginVersion: constants.venusPluginVersion,
+      phoneId: this.phoneId,
+      phoneOsVersion: "16.0",
+      eventKey: types.VacuumControlTypeDescription[typeCode],
+      eventType: valueCode,
+    };
+    args.forEach((value, index) => {
+      payload[`arg${index + 1}`] = value;
+    });
+    payload.arg11 = "ios";
+    payload.arg12 = "iPhone 13 mini";
+    return this._venusRequest("POST", "/plugin/venus/event_tracking", payload);
+  }
+
+  /**
+   * Filter the device list down to robot vacuums.
+   * @returns {Promise<Array>}
+   */
+  async getVacuumDeviceList() {
+    const devices = await this.getDeviceList();
+    return devices.filter((d) => constants.vacuumModels.includes(d.product_model));
+  }
+
+  /**
+   * Look up a single vacuum by MAC.
+   * @param {string} mac
+   */
+  async getVacuum(mac) {
+    const vacuums = await this.getVacuumDeviceList();
+    return vacuums.find((v) => v.mac === mac);
+  }
+
+  /**
+   * Combined snapshot of a vacuum: list entry merged with live IoT props,
+   * device info, status (event/heartbeat), current position, and current map.
+   * Mirrors wyze-sdk's `info(device_mac)`.
+   *
+   * Returns `null` if the mac is not a vacuum on this account. Failures of
+   * individual sub-fetches are logged and the corresponding fields are left
+   * out — this method never throws on a single missing piece.
+   *
+   * @param {string} mac
+   * @returns {Promise<Object|null>}
+   */
+  async getVacuumInfo(mac) {
+    const vacuum = await this.getVacuum(mac);
+    if (!vacuum) return null;
+
+    const result = { ...vacuum };
+
+    const safe = async (label, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        this.log.warning(`getVacuumInfo: ${label} failed: ${err.message}`);
+        return null;
+      }
+    };
+
+    const iotProp = await safe("get_iot_prop", () =>
+      this.getVacuumIotProp(mac, types.VacuumIotPropKeys)
+    );
+    if (iotProp?.data?.props) Object.assign(result, iotProp.data.props);
+
+    const deviceInfo = await safe("device_info", () =>
+      this.getVacuumDeviceInfo(mac, types.VacuumDeviceInfoKeys)
+    );
+    if (deviceInfo?.data?.settings) Object.assign(result, deviceInfo.data.settings);
+
+    const status = await safe("status", () => this.getVacuumStatus(mac));
+    if (status?.data?.eventFlag) Object.assign(result, status.data.eventFlag);
+    if (status?.data?.heartBeat) Object.assign(result, status.data.heartBeat);
+
+    const position = await safe("current_position", () =>
+      this.getVacuumCurrentPosition(mac)
+    );
+    if (position?.data) result.current_position = position.data;
+
+    const map = await safe("current_map", () => this.getVacuumCurrentMap(mac));
+    if (map?.data) result.current_map = map.data;
+
+    return result;
+  }
+
+  /**
+   * Read live IoT properties for a vacuum (battery, mode, etc.).
+   * @param {string} mac
+   * @param {string|string[]} keys — comma-joined when an array
+   */
+  async getVacuumIotProp(mac, keys) {
+    const params = { did: mac };
+    if (keys != null) params.keys = Array.isArray(keys) ? keys.join(",") : keys;
+    return this._venusRequest("GET", "/plugin/venus/get_iot_prop", params);
+  }
+
+  /**
+   * Read device-level settings (suction level, etc.) for a vacuum.
+   * @param {string} mac
+   * @param {string|string[]} keys
+   */
+  async getVacuumDeviceInfo(mac, keys) {
+    const params = { device_id: mac };
+    if (keys != null) params.keys = Array.isArray(keys) ? keys.join(",") : keys;
+    return this._venusRequest("GET", "/plugin/venus/device_info", params);
+  }
+
+  /**
+   * Heartbeat / event status for a vacuum.
+   * @param {string} mac
+   */
+  async getVacuumStatus(mac) {
+    return this._venusRequest("GET", `/plugin/venus/${mac}/status`);
+  }
+
+  async getVacuumCurrentPosition(mac) {
+    return this._venusRequest("GET", "/plugin/venus/memory_map/current_position", { did: mac });
+  }
+
+  async getVacuumCurrentMap(mac) {
+    return this._venusRequest("GET", "/plugin/venus/memory_map/current_map", { did: mac });
+  }
+
+  async getVacuumMaps(mac) {
+    return this._venusRequest("GET", "/plugin/venus/memory_map/list", { did: mac });
+  }
+
+  /**
+   * Set the active map for a vacuum.
+   * @param {string} mac
+   * @param {number} mapId
+   */
+  async setVacuumCurrentMap(mac, mapId) {
+    return this._venusRequest("POST", "/plugin/venus/memory_map/current_map", {
+      device_id: mac,
+      map_id: mapId,
+    });
+  }
+
+  /**
+   * Sweep history.
+   * @param {string} mac
+   * @param {Object} [options]
+   * @param {number} [options.limit=20]
+   * @param {Date|number} [options.since] — Date or epoch ms; defaults to now
+   */
+  async getVacuumSweepRecords(mac, options = {}) {
+    const { limit = 20, since = Date.now() } = options;
+    const lastTime = since instanceof Date ? since.getTime() : since;
+    return this._venusRequest("GET", "/plugin/venus/sweep_record/query_data", {
+      did: mac,
+      purpose: "history_map",
+      count: limit,
+      last_time: lastTime,
+    });
+  }
+
+  /**
+   * Low-level control. Prefer the named methods (vacuumClean, vacuumPause, ...)
+   * unless you specifically need AREA_CLEAN or QUICK_MAPPING.
+   * @param {string} mac
+   * @param {number} type — see VacuumControlType
+   * @param {number} value — see VacuumControlValue
+   * @param {Object} [extras] — e.g. `{ rooms_id: [11, 14] }`
+   */
+  async vacuumControl(mac, type, value, extras = {}) {
+    const payload = { type, value, vacuumMopMode: 0, ...extras };
+    return this._venusRequest("POST", `/plugin/venus/${mac}/control`, payload);
+  }
+
+  /**
+   * Start (or resume) a whole-home cleaning. Wyze handles start vs. resume
+   * server-side based on the current vacuum state.
+   * @param {string} mac
+   */
+  async vacuumClean(mac) {
+    return this.vacuumControl(mac, VacuumControlType.GLOBAL_SWEEPING, VacuumControlValue.START);
+  }
+
+  /**
+   * Pause an in-progress cleaning.
+   * @param {string} mac
+   */
+  async vacuumPause(mac) {
+    return this.vacuumControl(mac, VacuumControlType.GLOBAL_SWEEPING, VacuumControlValue.PAUSE);
+  }
+
+  /**
+   * Send the vacuum back to its charging dock.
+   * @param {string} mac
+   */
+  async vacuumDock(mac) {
+    return this.vacuumControl(mac, VacuumControlType.RETURN_TO_CHARGING, VacuumControlValue.START);
+  }
+
+  /**
+   * Stop a return-to-dock currently in progress.
+   * @param {string} mac
+   */
+  async vacuumStop(mac) {
+    return this.vacuumControl(mac, VacuumControlType.RETURN_TO_CHARGING, VacuumControlValue.STOP);
+  }
+
+  /**
+   * Cancel a pending "resume after charging" state. Same wire payload as
+   * {@link vacuumStop}; named separately for caller clarity.
+   * @param {string} mac
+   */
+  async vacuumCancel(mac) {
+    return this.vacuumControl(mac, VacuumControlType.RETURN_TO_CHARGING, VacuumControlValue.STOP);
+  }
+
+  /**
+   * Clean specific rooms by id (from the current map).
+   * @param {string} mac
+   * @param {number|number[]} roomIds
+   */
+  async vacuumSweepRooms(mac, roomIds) {
+    const ids = Array.isArray(roomIds) ? roomIds : [roomIds];
+    return this.vacuumControl(
+      mac,
+      VacuumControlType.GLOBAL_SWEEPING,
+      VacuumControlValue.START,
+      { rooms_id: ids }
+    );
+  }
+
+  /**
+   * Set vacuum suction level.
+   * @param {string} mac
+   * @param {string} model — e.g. "JA_RO2"
+   * @param {number} level — see VacuumSuctionLevel (1=Quiet, 2=Standard, 3=Strong)
+   */
+  async vacuumSetSuctionLevel(mac, model, level) {
+    return this._venusRequest("POST", "/plugin/venus/set_iot_action", {
+      did: mac,
+      model,
+      cmd: "set_preference",
+      params: [{ ctrltype: VacuumPreferenceType.SUCTION, value: level }],
+      is_sub_device: 0,
+    });
+  }
+
   /**
    * Helper functions
    */
@@ -1685,6 +2029,74 @@ module.exports = class WyzeAPI {
       "0",
       "set_mesh_property"
     );
+  }
+
+  // Vacuum convenience helpers — accept a `device` object (as returned by
+  // getVacuumDeviceList / getDeviceList) so callers like homebridge plugins
+  // don't need to remember mac/model/level codes.
+
+  async vacuumStartCleaning(device) {
+    return this.vacuumClean(device.mac);
+  }
+
+  async vacuumPauseCleaning(device) {
+    return this.vacuumPause(device.mac);
+  }
+
+  async vacuumReturnToDock(device) {
+    return this.vacuumDock(device.mac);
+  }
+
+  async vacuumCleanRooms(device, roomIds) {
+    return this.vacuumSweepRooms(device.mac, roomIds);
+  }
+
+  async vacuumQuiet(device) {
+    return this.vacuumSetSuctionLevel(device.mac, device.product_model, types.VacuumSuctionLevel.QUIET);
+  }
+
+  async vacuumStandard(device) {
+    return this.vacuumSetSuctionLevel(device.mac, device.product_model, types.VacuumSuctionLevel.STANDARD);
+  }
+
+  async vacuumStrong(device) {
+    return this.vacuumSetSuctionLevel(device.mac, device.product_model, types.VacuumSuctionLevel.STRONG);
+  }
+
+  async vacuumInfo(device) {
+    return this.getVacuumInfo(device.mac);
+  }
+
+  // Battery / mode / status accessors — pure, operate on the merged result
+  // of getVacuumInfo() (or any object containing the same keys). Returning
+  // null on missing fields lets callers chain optionally without throwing.
+
+  vacuumGetBattery(info) {
+    // "battary" is the literal Wyze key (typo preserved by the server).
+    return typeof info?.battary === "number" ? info.battary : null;
+  }
+
+  vacuumGetMode(info) {
+    return types.parseVacuumMode(info?.mode);
+  }
+
+  vacuumGetFault(info) {
+    const code = info?.fault_code;
+    if (typeof code !== "number" || code === 0) return null;
+    return { code, description: types.VacuumFaultCode[code] ?? null };
+  }
+
+  vacuumIsCharging(info) {
+    return Boolean(info?.chargeState);
+  }
+
+  vacuumIsCleaning(info) {
+    return this.vacuumGetMode(info) === "CLEANING";
+  }
+
+  vacuumIsDocked(info) {
+    const mode = this.vacuumGetMode(info);
+    return mode === "IDLE" || this.vacuumIsCharging(info);
   }
 
   async unlockLock(device) {
@@ -3013,3 +3425,18 @@ module.exports.StreamStatus = Object.freeze({
   CONNECTING: 2,
   CONNECTED: 3,
 });
+
+module.exports.VacuumControlType = types.VacuumControlType;
+module.exports.VacuumControlValue = types.VacuumControlValue;
+module.exports.VacuumStatus = types.VacuumStatus;
+module.exports.VacuumSuctionLevel = types.VacuumSuctionLevel;
+module.exports.VacuumPreferenceType = types.VacuumPreferenceType;
+module.exports.VacuumModeCodes = types.VacuumModeCodes;
+module.exports.parseVacuumMode = types.parseVacuumMode;
+module.exports.VacuumFaultCode = types.VacuumFaultCode;
+module.exports.VacuumIotPropKeys = types.VacuumIotPropKeys;
+module.exports.VacuumDeviceInfoKeys = types.VacuumDeviceInfoKeys;
+module.exports.VenusDotArg1 = types.VenusDotArg1;
+module.exports.VenusDotArg2 = types.VenusDotArg2;
+module.exports.VenusDotArg3 = types.VenusDotArg3;
+module.exports.VacuumControlTypeDescription = types.VacuumControlTypeDescription;

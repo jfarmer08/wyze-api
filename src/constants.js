@@ -33,4 +33,15 @@ module.exports = Object.freeze({
   iot3BaseUrl: "https://app.wyzecam.com",
   iot3AppVersion: "3.11.0.758",
   iot3AppInfo: "wyze_android_3.11.0.758",
+
+  // Venus service (Wyze Robot Vacuum, e.g. JA_RO2)
+  venusBaseUrl: "https://wyze-venus-service-vn.wyzecam.com",
+  venusAppId: "venp_4c30f812828de875",
+  venusSigningSecret: "CVCSNoa0ALsNEpgKls6ybVTVOmGzFoiq",
+  vacuumModels: ["JA_RO2"],
+  // Emulation constants used by /plugin/venus/event_tracking. Mirrored from
+  // wyze-sdk's VenusServiceClient class fields.
+  venusPluginVersion: "2.35.1",
+  vacuumFirmwareVersion: "1.6.113",
+  vacuumEventTrackingUuid: "88DBF3344D20B5597DB7C8F0AFBB4030",
 });
