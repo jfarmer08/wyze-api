@@ -18,6 +18,8 @@ const {
   VacuumControlType,
   VacuumControlValue,
   VacuumPreferenceType,
+  propertyIds: PIDs,
+  propertyValues: PVals,
 } = types;
 
 module.exports = class WyzeAPI {
@@ -710,9 +712,9 @@ module.exports = class WyzeAPI {
       { pid: propertyId, pvalue: String(propertyValue) }
     ];
 
-    // Add default property if not already P3
-    if (propertyId !== "P3") {
-      plist.push({ pid: "P3", pvalue: "1" });
+    // Add default on/off property if not already the on/off PID
+    if (propertyId !== PIDs.ON) {
+      plist.push({ pid: PIDs.ON, pvalue: "1" });
     }
 
     const data = {
@@ -2015,7 +2017,7 @@ module.exports = class WyzeAPI {
     return await this.runActionList(
       deviceMac,
       deviceModel,
-      "P3",
+      PIDs.ON,
       "1",
       "set_mesh_property"
     );
@@ -2025,7 +2027,7 @@ module.exports = class WyzeAPI {
     return await this.runActionList(
       deviceMac,
       deviceModel,
-      "P3",
+      PIDs.ON,
       "0",
       "set_mesh_property"
     );
@@ -2221,7 +2223,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the property has been set.
    */
   async cameraFloodLight(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P1056", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, value);
   }
 
   /**
@@ -2232,7 +2234,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the flood light has been turned on.
    */
   async cameraFloodLightOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1056", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.ON);
   }
 
   /**
@@ -2243,7 +2245,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the flood light has been turned off.
    */
   async cameraFloodLightOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1056", "2");
+    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.OFF);
   }
 
   /**
@@ -2255,7 +2257,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the property has been set.
    */
   async cameraSpotLight(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P1056", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, value);
   }
 
   /**
@@ -2266,7 +2268,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the spot light has been turned on.
    */
   async cameraSpotLightOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1056", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.ON);
   }
 
   /**
@@ -2277,7 +2279,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the spot light has been turned off.
    */
   async cameraSpotLightOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1056", "2");
+    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.OFF);
   }
 
   /**
@@ -2288,7 +2290,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when motion detection has been turned on.
    */
   async cameraMotionOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1001", 1);
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION, 1);
   }
 
   /**
@@ -2299,7 +2301,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when motion detection has been turned off.
    */
   async cameraMotionOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1001", 0);
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION, 0);
   }
 
   /**
@@ -2310,7 +2312,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when sound notifications have been turned on.
    */
   async cameraSoundNotificationOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1048", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.SOUND_NOTIFICATION, "1");
   }
 
   /**
@@ -2321,7 +2323,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when sound notifications have been turned off.
    */
   async cameraSoundNotificationOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1048", "0");
+    await this.setProperty(deviceMac, deviceModel, PIDs.SOUND_NOTIFICATION, "0");
   }
 
   /**
@@ -2333,7 +2335,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the property has been set.
    */
   async cameraNotifications(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P1", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, value);
   }
 
   /**
@@ -2344,7 +2346,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when notifications have been turned on.
    */
   async cameraNotificationsOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "1");
   }
 
   /**
@@ -2355,7 +2357,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when notifications have been turned off.
    */
   async cameraNotificationsOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1", "0");
+    await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "0");
   }
 
   /**
@@ -2367,7 +2369,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the property has been set.
    */
   async cameraMotionRecording(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P1047", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_RECORDING, value);
   }
 
   /**
@@ -2378,7 +2380,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when motion recording has been turned on.
    */
   async cameraMotionRecordingOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1047", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_RECORDING, "1");
   }
 
   /**
@@ -2389,7 +2391,7 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when motion recording has been turned off.
    */
   async cameraMotionRecordingOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P1047", "0");
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_RECORDING, "0");
   }
 
   /**
@@ -2946,15 +2948,15 @@ module.exports = class WyzeAPI {
    * @param {number} value
    */
   async plugPower(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P3", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.ON, value);
   }
 
   async plugTurnOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "1");
   }
 
   async plugTurnOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "0");
+    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "0");
   }
 
   //WyzeLight
@@ -2965,23 +2967,23 @@ module.exports = class WyzeAPI {
    * @param {number} value
    */
   async lightPower(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P3", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.ON, value);
   }
 
   async lightTurnOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "1");
+    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "1");
   }
 
   async lightTurnOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, "P3", "0");
+    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "0");
   }
 
   async setBrightness(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P1501", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.BRIGHTNESS, value);
   }
 
   async setColorTemperature(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, "P1502", value);
+    await this.setProperty(deviceMac, deviceModel, PIDs.COLOR_TEMP, value);
   }
 
   /**
@@ -2994,7 +2996,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P3",
+      PIDs.ON,
       value,
       "set_mesh_property"
     );
@@ -3009,7 +3011,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P3",
+      PIDs.ON,
       "1",
       "set_mesh_property"
     );
@@ -3024,7 +3026,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P3",
+      PIDs.ON,
       "0",
       "set_mesh_property"
     );
@@ -3040,7 +3042,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P1501",
+      PIDs.BRIGHTNESS,
       value,
       "set_mesh_property"
     );
@@ -3056,7 +3058,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P1502",
+      PIDs.COLOR_TEMP,
       value,
       "set_mesh_property"
     );
@@ -3072,7 +3074,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P1507",
+      PIDs.COLOR,
       value,
       "set_mesh_property"
     );
@@ -3088,7 +3090,7 @@ module.exports = class WyzeAPI {
     await this.runActionList(
       deviceMac,
       deviceModel,
-      "P1507",
+      PIDs.COLOR,
       value,
       "set_mesh_property"
     );

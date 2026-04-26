@@ -1,12 +1,114 @@
-const propertyIds = {
-  NOTIFICATION: "P1",
-  ON: "P3",
-  AVAILABLE: "P5",
-  BRIGHTNESS: "P1501",
-  COLOR_TEMP: "P1502",
+// Wyze property IDs (PIDs). Names mirror wyze-sdk's *Props classes where
+// the source documents them; otherwise they reflect our existing method
+// naming (e.g. P1001 → MOTION_DETECTION matches cameraMotionOn/Off).
+//
+// P1056 is shared between the camera flood light and spotlight (devices
+// only expose one of the two physically) — kept under CAMERA_FLOOD_LIGHT
+// for backwards compatibility.
+const propertyIds = Object.freeze({
+  NOTIFICATION: "P1",         // CameraProps / SensorProps notification
+  ON: "P3",                   // SwitchableMixin on/off
+  AVAILABLE: "P5",            // online
+  MOTION_DETECTION: "P1001",  // cameraMotion*
+  MOTION_RECORDING: "P1047",  // CameraProps motion_alarm_enable
+  SOUND_NOTIFICATION: "P1048",// CameraProps sound_alarm_enable
   CAMERA_SIREN: "P1049",
-  CAMERA_FLOOD_LIGHT: "P1056",
-};
+  CAMERA_FLOOD_LIGHT: "P1056",// also used for spotlight (P1056 is shared)
+  BRIGHTNESS: "P1501",        // LightProps brightness
+  COLOR_TEMP: "P1502",        // LightProps color_temp
+  COLOR: "P1507",             // LightProps color (HEX RGB)
+});
+
+// Documented value sets for the PIDs above. Use these instead of inline
+// strings when the value isn't self-evident — e.g. CAMERA_FLOOD_LIGHT
+// uses "1"/"2" not "1"/"0", and a future reader of `..., "2")` won't
+// know which one means "off".
+//
+// PIDs not listed here use straightforward "1"/"0" or numeric ranges
+// (BRIGHTNESS = 1–100, COLOR_TEMP = 2700–6500K, COLOR = HEX RGB string).
+const propertyValues = Object.freeze({
+  // P3 / SwitchableMixin on/off — strings in this codebase
+  ON: Object.freeze({ ON: "1", OFF: "0" }),
+
+  // P1 / camera + sensor notification toggle
+  NOTIFICATION: Object.freeze({ ON: "1", OFF: "0" }),
+
+  // P1001 / camera motion detection — numeric in this codebase
+  MOTION_DETECTION: Object.freeze({ ON: 1, OFF: 0 }),
+
+  // P1047 / camera motion recording (event recording motion record enabled)
+  MOTION_RECORDING: Object.freeze({ ON: "1", OFF: "0" }),
+
+  // P1048 / camera sound notification (event recording sound record enabled)
+  SOUND_NOTIFICATION: Object.freeze({ ON: "1", OFF: "0" }),
+
+  // P1056 / camera floodlight + spotlight — NOTE: OFF is "2", not "0"
+  CAMERA_FLOOD_LIGHT: Object.freeze({ ON: "1", OFF: "2" }),
+
+  // P1049 / camera siren — same shape as floodlight on Wyze devices
+  CAMERA_SIREN: Object.freeze({ ON: "1", OFF: "2" }),
+});
+
+// Master product_model registry, mirroring wyze_sdk.models.devices.base.DeviceModels.
+// Single source of truth for product_model -> family. Aggregate keys (CAMERA, BULB,
+// PLUG, MESH_BULB, LIGHT_STRIP, SCALE) are computed from their components.
+const _CAMERA_V1 = ["WYZEC1"];
+const _CAMERA_V2 = ["WYZEC1-JZ"];
+const _CAMERA_V3 = ["WYZE_CAKP2JFUS"];
+const _CAMERA_OUTDOOR = ["WVOD1"];
+
+const _BULB_WHITE = ["WLPA19"];
+const _BULB_WHITE_V2 = ["HL_HWB2"];
+const _LIGHT_STRIP_PRO = ["HL_LSLP"];
+const _LIGHT_STRIP = ["HL_LSL", ..._LIGHT_STRIP_PRO];
+const _MESH_BULB = ["WLPA19C", ..._LIGHT_STRIP];
+
+const _SCALE_ = ["JA.SC", "JA.SC2"];
+const _SCALE_S = ["WL_SC2"];
+const _SCALE_X = ["WL_SC3"];
+
+const _OUTDOOR_PLUG = ["WLPPO", "WLPPO-SUB"];
+
+const DeviceModels = Object.freeze({
+  CAMERA_V1: _CAMERA_V1,
+  CAMERA_V2: _CAMERA_V2,
+  CAMERA_V3: _CAMERA_V3,
+  CAMERA_OUTDOOR: _CAMERA_OUTDOOR,
+  CAMERA: [..._CAMERA_V1, ..._CAMERA_V2, ..._CAMERA_V3, ..._CAMERA_OUTDOOR],
+
+  LOCK: ["YD.LO1"],
+  LOCK_GATEWAY: ["YD.GW1"],
+  LOCK_BOLT_V2: ["DX_LB2"],
+  LOCK_PALM: ["DX_PVLOC"],
+
+  THERMOSTAT: ["CO_EA1"],
+  THERMOSTAT_ROOM_SENSOR: ["CO_TH1"],
+
+  CONTACT_SENSOR: ["DWS3U", "DWS2U"],
+  MOTION_SENSOR: ["PIR3U", "PIR2U"],
+
+  VACUUM: ["JA_RO2"],
+
+  SCALE_: _SCALE_,
+  SCALE_S: _SCALE_S,
+  SCALE_X: _SCALE_X,
+  SCALE: [..._SCALE_, ..._SCALE_S, ..._SCALE_X],
+
+  WATCH: ["RA.WP1", "RY.WA1"],
+  BAND: ["RY.HP1"],
+
+  BULB_WHITE: _BULB_WHITE,
+  BULB_WHITE_V2: _BULB_WHITE_V2,
+  LIGHT_STRIP_PRO: _LIGHT_STRIP_PRO,
+  LIGHT_STRIP: _LIGHT_STRIP,
+  MESH_BULB: _MESH_BULB,
+  BULB: [..._BULB_WHITE, ..._BULB_WHITE_V2, ..._MESH_BULB],
+
+  OUTDOOR_PLUG: _OUTDOOR_PLUG,
+  PLUG: ["WLPP1", "WLPP1CFH", ..._OUTDOOR_PLUG],
+
+  SWITCH: ["LD_SS1"],
+});
 
 const wyzeWallSwitch = {
   CLASSIC: 1, // Classic Control
@@ -194,6 +296,8 @@ const VacuumDeviceInfoKeys = Object.freeze([
 
 module.exports = {
   propertyIds,
+  propertyValues,
+  DeviceModels,
   wyzeWallSwitch,
   wyzeColorProperty,
   homeKitColorProperty,
