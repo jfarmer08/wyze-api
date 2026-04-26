@@ -739,82 +739,17 @@ module.exports = class WyzeAPI {
   }
 
   async controlLock(deviceMac, deviceModel, action) {
-    await this.maybeLogin();
-
-    const path = "/openapi/lock/v1/control";
-    const uuid = this.getUuid(deviceMac, deviceModel);
-    let payload = {
-      uuid,
+    return this._fordPost("/openapi/lock/v1/control", {
+      uuid: this.getUuid(deviceMac, deviceModel),
       action, // "remoteLock" or "remoteUnlock"
-    };
-
-    try {
-      // Generate payload using the payloadFactory
-      payload = payloadFactory.fordCreatePayload(
-        this.access_token,
-        payload,
-        path,
-        "post"
-      );
-
-      const urlPath = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/control";
-      const result = await axios.post(urlPath, payload);
-
-      if (this.apiLogEnabled) {
-        this.log.info(`API response ControlLock: ${JSON.stringify(result.data)}`);
-      }
-
-      return result.data;
-    } catch (error) {
-      this.log.error(`Request failed: ${error.message}`);
-
-      if (error.response) {
-        this.log.error(`Response ControlLock (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
-      }
-
-      throw error;
-    }
+    });
   }
 
   async getLockInfo(deviceMac, deviceModel) {
-    await this.maybeLogin();
-    let url_path = "/openapi/lock/v1/info";
-    let payload = {
+    return this._fordGet("/openapi/lock/v1/info", {
       uuid: this.getUuid(deviceMac, deviceModel),
       with_keypad: "1",
-    };
-    try {
-      let config = {
-        params: payload,
-      };
-      payload = payloadFactory.fordCreatePayload(
-        this.access_token,
-        payload,
-        url_path,
-        "get"
-      );
-
-      const url = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/info";
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response GetLockInfo: ${JSON.stringify(result.data)}`
-        );
-      }
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-      if (e.response) {
-        this.log.error(
-          `Response GetLockInfo (${e.response.statusText}): ${JSON.stringify(
-            e.response.data,
-            null,
-            "\t"
-          )}`
-        );
-      }
-      throw e;
-    }
+    });
   }
 
   async getIotProp(deviceMac) {
@@ -2119,6 +2054,246 @@ module.exports = class WyzeAPI {
 
   async lockInfo(device) {
     return await this.getLockInfo(device.mac, device.product_model);
+  }
+
+  // Wyze Lock V1 (YD.LO1) — additional Ford-service reads.
+  // Existing methods (controlLock, getLockInfo) already use the Ford signing
+  // path via payloadFactory.fordCreatePayload + crypto.fordCreateSignature;
+  // these new reads reuse that same machinery.
+
+  /**
+   * Send a signed GET to the Ford lock service.
+   * @param {string} urlPath — e.g. "/openapi/keypad/v1/info"
+   * @param {Object} params  — raw params (uuid, etc.); auth + sign are added
+   * @returns {Promise<Object>} response data
+   */
+  async _fordGet(urlPath, params = {}) {
+    await this.maybeLogin();
+    const signedParams = payloadFactory.fordCreatePayload(
+      this.access_token,
+      params,
+      urlPath,
+      "get"
+    );
+    const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
+    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    try {
+      const result = await axios.get(url, { params: signedParams });
+      if (this.apiLogEnabled) {
+        this.log.info(`API response Ford GET ${urlPath}: ${JSON.stringify(result.data)}`);
+      }
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e.message}`);
+      if (e.response) {
+        this.log.error(
+          `Response Ford GET ${urlPath} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Send a signed POST to the Ford lock service.
+   * @param {string} urlPath
+   * @param {Object} params — raw payload (auth + sign are added)
+   */
+  async _fordPost(urlPath, params = {}) {
+    await this.maybeLogin();
+    const signedPayload = payloadFactory.fordCreatePayload(
+      this.access_token,
+      params,
+      urlPath,
+      "post"
+    );
+    const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
+    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    try {
+      const result = await axios.post(url, signedPayload);
+      if (this.apiLogEnabled) {
+        this.log.info(`API response Ford POST ${urlPath}: ${JSON.stringify(result.data)}`);
+      }
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e.message}`);
+      if (e.response) {
+        this.log.error(
+          `Response Ford POST ${urlPath} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Filter the device list down to V1 locks (YD.LO1).
+   */
+  async getLockDeviceList() {
+    const devices = await this.getDeviceList();
+    return devices.filter((d) => types.DeviceModels.LOCK.includes(d.product_model));
+  }
+
+  /**
+   * Filter the device list down to lock gateways (YD.GW1).
+   */
+  async getLockGatewayList() {
+    const devices = await this.getDeviceList();
+    return devices.filter((d) => types.DeviceModels.LOCK_GATEWAY.includes(d.product_model));
+  }
+
+  /**
+   * Read details about a paired keypad.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   */
+  async getLockKeypadInfo(deviceMac, deviceModel) {
+    return this._fordGet("/openapi/keypad/v1/info", {
+      uuid: this.getUuid(deviceMac, deviceModel),
+    });
+  }
+
+  /**
+   * Read details about the lock's gateway (the Wi-Fi bridge).
+   * @param {string} deviceMac
+   * @param {string} deviceModel — pass the gateway's model (`YD.GW1`)
+   */
+  async getLockGatewayInfo(deviceMac, deviceModel) {
+    return this._fordGet("/openapi/gateway/v1/info", {
+      uuid: this.getUuid(deviceMac, deviceModel),
+    });
+  }
+
+  /**
+   * Get the secret used to encrypt new access codes.
+   * Required input for `add_password` / `update_password` (deferred follow-up).
+   */
+  async getLockCryptSecret() {
+    return this._fordGet("/openapi/v1/crypt_secret");
+  }
+
+  /**
+   * Count of safety-record events for a lock.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Date|number} since — earliest time (Date or epoch ms)
+   * @param {Date|number} [until]
+   */
+  async getLockRecordCount(deviceMac, deviceModel, since, until) {
+    const begin = since instanceof Date ? since.getTime() : since;
+    const params = {
+      uuid: this.getUuid(deviceMac, deviceModel),
+      begin: String(begin),
+    };
+    if (until != null) {
+      params.end = String(until instanceof Date ? until.getTime() : until);
+    }
+    return this._fordGet("/openapi/v1/safety/count", params);
+  }
+
+  /**
+   * Lock event records (lock/unlock events with source — App / Keypad /
+   * Fingerprint / Manual / NFC / Auto / Remote).
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} options
+   * @param {Date|number} options.since — earliest time
+   * @param {Date|number} [options.until]
+   * @param {number} [options.limit=20]
+   * @param {number} [options.offset=0]
+   */
+  async getLockRecords(deviceMac, deviceModel, options = {}) {
+    const { since, until, limit = 20, offset = 0 } = options;
+    if (since == null) throw new Error("getLockRecords: `since` is required");
+    const begin = since instanceof Date ? since.getTime() : since;
+    const params = {
+      uuid: this.getUuid(deviceMac, deviceModel),
+      begin: String(begin),
+      offset: String(offset),
+      limit: String(limit),
+    };
+    if (until != null) {
+      params.end = String(until instanceof Date ? until.getTime() : until);
+    }
+    return this._fordGet("/openapi/v1/safety/family_record", params);
+  }
+
+  /**
+   * List access-code "keys" (passwords) on the lock. Returns metadata only —
+   * the actual code values are encrypted on the server and not exposed.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   */
+  async getLockKeys(deviceMac, deviceModel) {
+    return this._fordGet("/openapi/lock/v1/pwd", {
+      uuid: this.getUuid(deviceMac, deviceModel),
+    });
+  }
+
+  /**
+   * Combined snapshot of a lock — list entry + lock info + crypt secret +
+   * record count. Mirrors wyze-sdk's `LocksClient.info()`. Tolerates
+   * partial sub-fetch failures.
+   *
+   * @param {string} mac
+   * @returns {Promise<Object|null>}
+   */
+  async getLockFullInfo(mac) {
+    const devices = await this.getLockDeviceList();
+    const lock = devices.find((d) => d.mac === mac);
+    if (!lock) return null;
+
+    const result = { ...lock };
+
+    const safe = async (label, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        this.log.warning(`getLockFullInfo: ${label} failed: ${err.message}`);
+        return null;
+      }
+    };
+
+    const lockInfo = await safe("lock_info", () =>
+      this.getLockInfo(lock.mac, lock.product_model)
+    );
+    if (lockInfo?.device) {
+      result.device_params = { ...(result.device_params || {}), ...lockInfo.device };
+    }
+
+    const secret = await safe("crypt_secret", () => this.getLockCryptSecret());
+    if (secret?.secret) result.secret = secret.secret;
+
+    const count = await safe("record_count", () =>
+      this.getLockRecordCount(lock.mac, lock.product_model, 0)
+    );
+    if (count?.cnt != null) result.record_count = count.cnt;
+
+    return result;
+  }
+
+  // Device-object helpers — accept the `device` returned by getDeviceList /
+  // getLockDeviceList so callers don't have to remember mac/model pairs.
+
+  async lockKeypad(device) {
+    return this.getLockKeypadInfo(device.mac, device.product_model);
+  }
+
+  async lockGateway(device) {
+    return this.getLockGatewayInfo(device.mac, device.product_model);
+  }
+
+  async lockRecords(device, options = {}) {
+    return this.getLockRecords(device.mac, device.product_model, options);
+  }
+
+  async lockKeys(device) {
+    return this.getLockKeys(device.mac, device.product_model);
+  }
+
+  async lockFullInfo(device) {
+    return this.getLockFullInfo(device.mac);
   }
 
   // IoT3 API — used by Lock Bolt V2 (DX_LB2) and Palm lock (DX_PVLOC)
@@ -3442,3 +3617,19 @@ module.exports.VenusDotArg1 = types.VenusDotArg1;
 module.exports.VenusDotArg2 = types.VenusDotArg2;
 module.exports.VenusDotArg3 = types.VenusDotArg3;
 module.exports.VacuumControlTypeDescription = types.VacuumControlTypeDescription;
+module.exports.LockStatusType = types.LockStatusType;
+module.exports.LockStatusDescription = types.LockStatusDescription;
+module.exports.parseLockStatus = types.parseLockStatus;
+module.exports.LockEventType = types.LockEventType;
+module.exports.LockEventTypeDescription = types.LockEventTypeDescription;
+module.exports.parseLockEventType = types.parseLockEventType;
+module.exports.LockEventSourceCodes = types.LockEventSourceCodes;
+module.exports.LockEventSourceDescription = types.LockEventSourceDescription;
+module.exports.parseLockEventSource = types.parseLockEventSource;
+module.exports.LockVolumeLevel = types.LockVolumeLevel;
+module.exports.LockLeftOpenTime = types.LockLeftOpenTime;
+module.exports.LockKeyType = types.LockKeyType;
+module.exports.LockKeyState = types.LockKeyState;
+module.exports.LockKeyOperation = types.LockKeyOperation;
+module.exports.LockKeyOperationStage = types.LockKeyOperationStage;
+module.exports.LockKeyPermissionType = types.LockKeyPermissionType;

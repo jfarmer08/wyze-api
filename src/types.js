@@ -145,6 +145,151 @@ const wyze2HomekitWorkingStates = {
 
 const GET_PAYLOAD = new Set(["param_info"]);
 
+// Wyze Lock (V1, YD.LO1) — code/description tables from wyze_sdk.models.devices.locks.
+// Codes are wire values (Wyze API integers); descriptions are the human strings
+// used in the Wyze app. Use `parseLockStatus(code)` etc. for code-to-name lookup.
+
+const LockStatusType = Object.freeze({
+  OFFLINE: -1,
+  CONNECTING: 0,
+  LOCKED: 1,
+  LOCKING: 2,
+  UNLOCKED: 3,
+  UNLOCKING: 4,
+  UNCALIBRATED: 5,
+});
+
+const LockStatusDescription = Object.freeze({
+  [-1]: "Offline",
+  0: "Connecting",
+  1: "Locked",
+  2: "Locking",
+  3: "Unlocked",
+  4: "Unlocking",
+  5: "Uncalibrated",
+});
+
+function parseLockStatus(code) {
+  if (typeof code !== "number") return null;
+  return LockStatusDescription[code] ?? null;
+}
+
+const LockEventType = Object.freeze({
+  UNLOCKED: 2203,
+  OPENED: 2214,
+  CLOSED: 2215,
+  LOCKED: 2216,
+  OPEN_TOO_LONG: 2218,
+  JAMMED: 2221,
+  TOTALLY_JAMMED: 2222,
+  SWUNG_OPEN: 2223,
+  KEPT_OPEN: 2224,
+  TRASH_MODE: 2225,
+  AUTO_CALIBRATED: 2226,
+});
+
+const LockEventTypeDescription = Object.freeze({
+  2203: "Unlocked",
+  2214: "Opened",
+  2215: "Closed",
+  2216: "Locked",
+  2218: "Open too long",
+  2221: "Jammed",
+  2222: "Totally jammed",
+  2223: "Swung open",
+  2224: "Kept open longer than 24 hours",
+  2225: "Trash mode",
+  2226: "Auto-calibrated",
+});
+
+function parseLockEventType(code) {
+  if (typeof code !== "number") return null;
+  return LockEventTypeDescription[code] ?? null;
+}
+
+// Lock event source — one source name can map to multiple codes (KEYPAD = [2, 102]).
+const LockEventSourceCodes = Object.freeze({
+  LOCAL: [1],          // "App"
+  KEYPAD: [2, 102],
+  FINGERPRINT: [3],
+  INSIDE_BUTTON: [4],
+  MANUAL: [5],
+  INSIDE_HOLDER: [6],
+  NFC: [7],
+  AUTO: [8],
+  REMOTE: [9],
+});
+
+const LockEventSourceDescription = Object.freeze({
+  LOCAL: "App",
+  KEYPAD: "Keypad",
+  FINGERPRINT: "Fingerprint",
+  INSIDE_BUTTON: "Inside button",
+  MANUAL: "Manual",
+  INSIDE_HOLDER: "Inside holder",
+  NFC: "NFC",
+  AUTO: "Auto",
+  REMOTE: "Remote",
+});
+
+function parseLockEventSource(code) {
+  if (typeof code !== "number") return null;
+  for (const [name, codes] of Object.entries(LockEventSourceCodes)) {
+    if (codes.includes(code)) return name;
+  }
+  return null;
+}
+
+const LockVolumeLevel = Object.freeze({
+  OFF: 0,
+  NORMAL: 50,
+  HIGH: 100,
+});
+
+const LockLeftOpenTime = Object.freeze({
+  IMMEDIATE: 1,
+  MIN_1: 2,
+  MIN_5: 3,
+  MIN_10: 4,
+  MIN_30: 5,
+  MIN_60: 6,
+});
+
+const LockKeyType = Object.freeze({
+  BLUETOOTH: 1,
+  ACCESS_CODE: 2,
+  FINGERPRINT: 3,
+});
+
+const LockKeyState = Object.freeze({
+  INIT: 1,
+  IN_USE: 2,
+  WILL_USE: 3,
+  OUT_OF_PERMISSION: 4,
+  FROZEN: 5,
+});
+
+const LockKeyOperation = Object.freeze({
+  ADD: 1,
+  DELETE: 2,
+  UPDATE: 3,
+  FREEZE: 4,
+  UNFREEZE: 5,
+});
+
+const LockKeyOperationStage = Object.freeze({
+  PENDING: 1,
+  FAILURE: 2,
+  SUCCESS: 3,
+});
+
+const LockKeyPermissionType = Object.freeze({
+  ALWAYS: 1,
+  DURATION: 2,
+  ONCE: 3,
+  RECURRING: 4,
+});
+
 // Wyze Robot Vacuum (Venus service) — codes lifted from wyze_sdk's
 // VacuumDeviceControlRequestType / RequestValue / VacuumStatus / VacuumSuctionLevel.
 
@@ -318,4 +463,20 @@ module.exports = {
   VenusDotArg2,
   VenusDotArg3,
   VacuumControlTypeDescription,
+  LockStatusType,
+  LockStatusDescription,
+  parseLockStatus,
+  LockEventType,
+  LockEventTypeDescription,
+  parseLockEventType,
+  LockEventSourceCodes,
+  LockEventSourceDescription,
+  parseLockEventSource,
+  LockVolumeLevel,
+  LockLeftOpenTime,
+  LockKeyType,
+  LockKeyState,
+  LockKeyOperation,
+  LockKeyOperationStage,
+  LockKeyPermissionType,
 };
