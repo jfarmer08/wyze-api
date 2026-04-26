@@ -7,3 +7,6 @@ node_modules
 # ignore any persisted token files
 wyze-*.json
 example/scratch/*
+
+# Claude Code worktree state
+.claude/
