@@ -90,6 +90,48 @@ Use these helper methods to interact with wyze-api.
 - wyze.cameraMotionRecordingOn(device.mac, device.product_model)
 - wyze.cameraMotionRecordingOff(device.mac, device.product_model)
 
+### Camera Stream Methods (WebRTC)
+
+These return the credentials a WebRTC client (werift, go2rtc, Kinesis Video Streams WebRTC SDK) needs to negotiate a live stream — they do **not** return a playable URL on their own.
+
+**Primary**:
+- wyze.getCameraWebRTCConnectionInfo(mac, model, [options]) — bundled, ready-to-use shape: `{signalingUrl, iceServers, authToken, clientId, mac, model, substream, cached}`. `iceServers` are normalized to the `{urls, ...}` shape `RTCPeerConnection` expects; `signalingUrl` has any double-encoding decoded and (by default) the generated `clientId` injected as `X-Amz-ClientId`. Cached for 60s per `(mac, substream)`. Options: `substream`, `includeClientId`, `clientId`, `clientIdPrefix`, `noCache`, `cacheTtlMs`.
+- wyze.getCameraWebRTCConnectionInfoWithReconnect(mac, model, [options], [retryOptions]) — same, with exponential-backoff retry. `retryOptions`: `{maxAttempts=3, baseDelayMs=2000, onRetry}`.
+
+**Lower-level**:
+- wyze.cameraGetStreamInfo(mac, model, [options]) — raw API shape `{signaling_url, ice_servers, auth_token, ...}`. `options.substream` requests the lower-bitrate sub stream.
+- wyze.cameraGetSignalingUrl(mac, model, [options]) — just the raw signaling URL string
+- wyze.cameraGetIceServers(mac, model, [options]) — just the raw ICE/STUN/TURN server list
+
+**Helpers**:
+- wyze.createCameraStreamClientId(deviceOrMac, [prefix="viewer"]) — generate a unique viewer client ID
+- wyze.normalizeCameraSignalingUrl(url) — fix double-encoded Kinesis URLs
+- wyze.sanitizeCameraIceServers(iceServers) — convert `{url}` entries to `{urls}` for `RTCPeerConnection`
+- wyze.parseCameraStatus(streamInfoResponse) — non-throwing parse → `{online, powered}` or `null`
+- wyze.cameraStreamWithReconnect(fn, [retryOptions]) — exponential-backoff retry wrapper for any stream call
+- wyze.clearCameraStreamCache([mac]) — clear cached stream info (one camera or all)
+- WyzeAPI.StreamStatus — lifecycle constants (`OFFLINE`, `STOPPING`, `DISABLED`, `STOPPED`, `CONNECTING`, `CONNECTED`)
+
+### Camera Helper Methods
+
+Pure (sync, take a device object):
+- wyze.cameraIsOnline(device) — true if `device.device_params.status === 1`
+- wyze.cameraGetThumbnail(device) — first thumbnail URL, or null
+- wyze.cameraGetSnapshot(device) — first thumbnail object (`{url, type, ts, ...}`), or null
+- wyze.cameraToSummary(device) — `{mac, productModel, nickname, online, thumbnail}`
+- wyze.cameraGetSignalStrength(device) / cameraGetIp(device) / cameraGetFirmware(device) / cameraGetTimezone(device) / cameraGetLastSeen(device)
+
+Lookups (async):
+- wyze.getCameras() — list of all camera devices
+- wyze.getOnlineCameras() / getOfflineCameras()
+- wyze.getCamera(mac) — by MAC, or undefined
+- wyze.getCameraByName(nickname) — by nickname (case-insensitive)
+- wyze.getCameraSnapshot(mac) — cloud snapshot metadata object (or null)
+- wyze.getCameraSnapshotUrl(mac) — cloud snapshot URL only
+- wyze.getCameraSummaries() — summaries for all cameras
+- wyze.cameraCaptureSnapshot(mac, model, [options]) — capture a JPEG frame from the live WebRTC stream. ffmpeg is provided by the bundled `ffmpeg-static` npm dep — no system install. Cached per-mac for `cacheTtlMs` (default 10s). Returns a `Buffer`.
+- wyze.getCameraSnapshotImage(mac, [options]) — returns `{buffer, source}` where `source` is `"cloud"` or `"capture"`. Tries the cloud thumbnail first; on missing or download failure, falls back to `cameraCaptureSnapshot`. Pass `skipCloud: true` to go straight to live capture.
+
 ### Plug Methods
 - wyze.plugPower(device.mac, device.product_model, value)
 - wyze.plugTurnOn(device.mac, device.product_model)

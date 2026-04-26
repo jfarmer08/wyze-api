@@ -1,0 +1,626 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wyze Camera Viewer</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font-family:
+          Inter,
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          sans-serif;
+        background: #0b1020;
+        color: #e8ecff;
+      }
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+        padding: 14px 20px;
+        background: #101828;
+        border-bottom: 1px solid #1e2d50;
+      }
+      header h2 {
+        margin: 0;
+        font-size: 1rem;
+        flex: 1;
+        white-space: nowrap;
+      }
+      .toolbar {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      button,
+      select {
+        background: #0f1430;
+        color: #e8ecff;
+        border: 1px solid #33407a;
+        border-radius: 8px;
+        padding: 7px 12px;
+        font-size: 0.85rem;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      button.active {
+        background: #1e3a8a;
+        border-color: #6495ed;
+      }
+      button.danger {
+        border-color: #7a3333;
+      }
+      button.danger:hover {
+        background: #3a1010;
+      }
+      #statusBar {
+        padding: 6px 20px;
+        font-size: 0.8rem;
+        background: #0d1525;
+        border-bottom: 1px solid #1e2d50;
+        min-height: 28px;
+      }
+      #grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+        gap: 12px;
+        padding: 16px;
+      }
+      .cam-tile {
+        background: #111827;
+        border: 1px solid #1e2d50;
+        border-radius: 10px;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+      .cam-tile-header {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        background: #151c34;
+        font-size: 0.82rem;
+        min-height: 36px;
+      }
+      .cam-name {
+        flex: 1;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .cam-badge {
+        font-size: 0.7rem;
+        padding: 2px 7px;
+        border-radius: 20px;
+        white-space: nowrap;
+      }
+      .badge-online {
+        background: #14532d;
+        color: #86efac;
+      }
+      .badge-offline {
+        background: #3b0000;
+        color: #fca5a5;
+      }
+      .badge-connecting {
+        background: #1e3a00;
+        color: #d9f99d;
+      }
+      .badge-streaming {
+        background: #0c4a6e;
+        color: #7dd3fc;
+      }
+      .badge-error {
+        background: #450a0a;
+        color: #fca5a5;
+      }
+      .cam-video-wrap {
+        position: relative;
+        background: #000;
+        aspect-ratio: 16/9;
+      }
+      .cam-video-wrap video {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+      .cam-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        color: #94a3b8;
+        background: rgba(0, 0, 0, 0.55);
+        pointer-events: none;
+      }
+      .cam-overlay.hidden {
+        display: none;
+      }
+      .cam-thumb {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.35;
+      }
+      .cam-footer {
+        display: flex;
+        gap: 6px;
+        padding: 6px 8px;
+        background: #151c34;
+        border-top: 1px solid #1e2d50;
+        align-items: center;
+      }
+      .cam-footer button {
+        padding: 5px 10px;
+        font-size: 0.78rem;
+      }
+      .cam-log {
+        font-size: 0.72rem;
+        color: #64748b;
+        padding: 4px 8px 6px;
+        max-height: 56px;
+        overflow-y: auto;
+        font-family: monospace;
+        line-height: 1.4;
+      }
+      .log-ok {
+        color: #86efac;
+      }
+      .log-warn {
+        color: #fde68a;
+      }
+      .log-err {
+        color: #fca5a5;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h2>📷 Wyze Camera Viewer</h2>
+      <div class="toolbar">
+        <button id="refreshBtn">↺ Refresh</button>
+        <button id="snapshotAllBtn">📸 Snapshot All</button>
+        <button id="startAllBtn">▶ Start All</button>
+        <button id="stopAllBtn" class="danger">■ Stop All</button>
+        <button id="substreamBtn">Sub-stream: OFF</button>
+      </div>
+    </header>
+    <div id="statusBar">Loading cameras…</div>
+    <div id="grid"></div>
+
+    <script>
+      let cameras = [];
+      let useSubstream = false;
+      const streams = new Map();
+
+      const statusBar = document.getElementById("statusBar");
+      const grid = document.getElementById("grid");
+      const refreshBtn = document.getElementById("refreshBtn");
+      const snapshotAllBtn = document.getElementById("snapshotAllBtn");
+      const startAllBtn = document.getElementById("startAllBtn");
+      const stopAllBtn = document.getElementById("stopAllBtn");
+      const substreamBtn = document.getElementById("substreamBtn");
+
+      substreamBtn.addEventListener("click", () => {
+        useSubstream = !useSubstream;
+        substreamBtn.textContent = `Sub-stream: ${useSubstream ? "ON" : "OFF"}`;
+        substreamBtn.classList.toggle("active", useSubstream);
+      });
+
+      function b64Encode(value) {
+        return btoa(unescape(encodeURIComponent(value)));
+      }
+      function b64Decode(value) {
+        const norm = String(value || "")
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+        const padded = norm + "=".repeat((4 - (norm.length % 4)) % 4);
+        return decodeURIComponent(escape(atob(padded)));
+      }
+      function parseSignalPayload(raw) {
+        if (!raw || raw === "null") return null;
+        const s = String(raw);
+        for (const fn of [() => JSON.parse(s), () => JSON.parse(b64Decode(s))]) {
+          try {
+            return fn();
+          } catch (_) {}
+        }
+        return null;
+      }
+      function escHtml(str) {
+        return String(str).replace(
+          /[&<>"']/g,
+          (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+        );
+      }
+
+      class StreamSession {
+        constructor(camera, elements) {
+          this.camera = camera;
+          this.els = elements;
+          this.pc = null;
+          this.ws = null;
+          this.pendingCandidates = [];
+          this.hasRemoteDesc = false;
+          this.isApplyingRemoteAnswer = false;
+          this.sessionToken = 0;
+          this.startWaiters = [];
+          this.incompatibleRetryCount = 0;
+        }
+
+        log(msg, level = "") {
+          const ts = new Date().toTimeString().slice(0, 8);
+          const line = document.createElement("div");
+          if (level) line.className = `log-${level}`;
+          line.textContent = `[${ts}] ${msg}`;
+          this.els.logEl.appendChild(line);
+          this.els.logEl.scrollTop = this.els.logEl.scrollHeight;
+        }
+
+        setBadge(text, cls) {
+          this.els.badge.textContent = text;
+          this.els.badge.className = `cam-badge ${cls}`;
+        }
+
+        setOverlay(text) {
+          if (text) {
+            this.els.overlay.textContent = text;
+            this.els.overlay.classList.remove("hidden");
+          } else {
+            this.els.overlay.classList.add("hidden");
+          }
+        }
+
+        ensureThumbEl() {
+          if (this.els.thumb) return this.els.thumb;
+          const thumb = document.createElement("img");
+          thumb.className = "cam-thumb";
+          thumb.alt = "";
+          this.els.video.parentElement.insertBefore(thumb, this.els.video);
+          this.els.thumb = thumb;
+          return thumb;
+        }
+
+        _resolveStartWaiters(value) {
+          const waiters = this.startWaiters;
+          this.startWaiters = [];
+          for (const resolve of waiters) {
+            resolve(value);
+          }
+        }
+
+        _waitForStartResult(timeoutMs = 2500) {
+          return new Promise((resolve) => {
+            const timer = setTimeout(() => resolve(false), timeoutMs);
+            this.startWaiters.push((value) => {
+              clearTimeout(timer);
+              resolve(value);
+            });
+          });
+        }
+
+        async start(isRetry = false) {
+          this.stop();
+          if (!isRetry) {
+            this.incompatibleRetryCount = 0;
+          }
+          const sessionToken = ++this.sessionToken;
+          if (!this.camera.online) {
+            this.setBadge("Offline", "badge-offline");
+            this.setOverlay("Camera offline");
+            this._resolveStartWaiters(false);
+            return;
+          }
+          this.setBadge("Connecting…", "badge-connecting");
+          this.setOverlay("Fetching stream…");
+          this.els.startBtn.disabled = true;
+
+          try {
+            const res = await fetch(
+              `/api/stream-params?mac=${encodeURIComponent(this.camera.mac)}` +
+                `&productModel=${encodeURIComponent(this.camera.productModel)}` +
+                `&substream=${useSubstream}`
+            );
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || "Failed to fetch stream params");
+            this._connect(data.params.signalingUrl, data.params.iceServers, sessionToken);
+            return await this._waitForStartResult();
+          } catch (err) {
+            this.log(err.message, "err");
+            this.setBadge("Error", "badge-error");
+            this.setOverlay("Failed: " + err.message);
+            this.els.startBtn.disabled = false;
+            this._resolveStartWaiters(false);
+            return false;
+          }
+        }
+
+        async refreshSnapshot() {
+          try {
+            this.log("Fetching snapshot…");
+            const url = `/api/snapshot?mac=${encodeURIComponent(this.camera.mac)}&ts=${Date.now()}`;
+            const res = await fetch(url);
+            if (!res.ok) {
+              const data = await res.json().catch(() => ({}));
+              throw new Error(data.error || `HTTP ${res.status}`);
+            }
+            const source = res.headers.get("X-Snapshot-Source") || "cloud";
+            this.ensureThumbEl().src = url;
+            this.log(`Snapshot updated (${source})`, "ok");
+          } catch (err) {
+            this.log(`Snapshot error: ${err.message}`, "err");
+          }
+        }
+
+        _connect(signalingUrl, iceServers, sessionToken) {
+          this.log("Connecting…");
+          this.pc = new RTCPeerConnection({ iceServers });
+
+          this.pc.ontrack = (event) => {
+            if (sessionToken !== this.sessionToken) return;
+            this.log("Streaming", "ok");
+            this.els.video.srcObject = event.streams[0];
+            this.setOverlay(null);
+            this.setBadge("● Live", "badge-streaming");
+            this._resolveStartWaiters(true);
+          };
+
+          this.pc.onicecandidate = (event) => {
+            if (sessionToken !== this.sessionToken) return;
+            if (event.candidate) this._send("ICE_CANDIDATE", event.candidate, "MASTER");
+          };
+
+          this.pc.onconnectionstatechange = () => {
+            if (sessionToken !== this.sessionToken) return;
+            const s = this.pc?.connectionState;
+            if (s === "failed" || s === "disconnected") {
+              this.log(`Connection ${s}`, "warn");
+              this.setBadge(s === "failed" ? "Error" : "Disconnected", "badge-error");
+              this._resolveStartWaiters(false);
+            }
+          };
+
+          this.pc.addTransceiver("video", { direction: "recvonly" });
+
+          this.ws = new WebSocket(signalingUrl);
+
+          this.ws.onopen = async () => {
+            if (sessionToken !== this.sessionToken || !this.pc) return;
+            this.log("Signaling connected", "ok");
+            this.setOverlay("Negotiating…");
+            const offer = await this.pc.createOffer();
+            await this.pc.setLocalDescription(offer);
+            this._send("SDP_OFFER", offer, "MASTER");
+          };
+
+          this.ws.onmessage = async (event) => {
+            if (sessionToken !== this.sessionToken || !this.pc) return;
+            if (typeof event.data !== "string" || event.data.length === 0) return;
+            try {
+              const env = JSON.parse(event.data);
+              const type = env.messageType || env.action;
+              const payload = parseSignalPayload(env.messagePayload);
+              if (!payload) return;
+
+              if (type === "SDP_ANSWER") {
+                if (
+                  this.hasRemoteDesc ||
+                  this.isApplyingRemoteAnswer ||
+                  this.pc.signalingState !== "have-local-offer"
+                ) {
+                  this.log("Ignoring late SDP answer", "warn");
+                  return;
+                }
+                this.isApplyingRemoteAnswer = true;
+                try {
+                  await this.pc.setRemoteDescription(new RTCSessionDescription(payload));
+                  this.hasRemoteDesc = true;
+                  this.log("SDP answer");
+                  for (const c of this.pendingCandidates) await this.pc.addIceCandidate(c);
+                  this.pendingCandidates = [];
+                } catch (err) {
+                  if (
+                    String(err?.message || "")
+                      .toLowerCase()
+                      .includes("incompatible send direction")
+                  ) {
+                    this.log("Incompatible SDP answer", "warn");
+                    this._resolveStartWaiters(false);
+
+                    if (this.incompatibleRetryCount < 1) {
+                      this.incompatibleRetryCount += 1;
+                      this.log("Retrying negotiation…", "warn");
+                      setTimeout(() => {
+                        if (sessionToken !== this.sessionToken) return;
+                        this.start(true).catch(() => {});
+                      }, 500);
+                    } else {
+                      this.setBadge("Error", "badge-error");
+                      this.setOverlay("Incompatible SDP from camera");
+                      this.els.startBtn.disabled = false;
+                    }
+                    return;
+                  }
+                  throw err;
+                } finally {
+                  this.isApplyingRemoteAnswer = false;
+                }
+              }
+              if (type === "ICE_CANDIDATE") {
+                const c = new RTCIceCandidate(payload);
+                if (!this.hasRemoteDesc) this.pendingCandidates.push(c);
+                else if (this.pc.remoteDescription) await this.pc.addIceCandidate(c);
+              }
+            } catch (err) {
+              this.log(`Signal error: ${err.message}`, "err");
+              this._resolveStartWaiters(false);
+            }
+          };
+
+          this.ws.onerror = () => this.log("WebSocket error", "err");
+          this.ws.onclose = (e) => {
+            if (sessionToken !== this.sessionToken) return;
+            if (e.code !== 1000) this.log(`WS closed (${e.code})`, "warn");
+            this._resolveStartWaiters(false);
+          };
+        }
+
+        _send(action, payload, recipientClientId = "") {
+          if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+          this.ws.send(
+            JSON.stringify({
+              action,
+              messagePayload: b64Encode(JSON.stringify(payload)),
+              recipientClientId,
+            })
+          );
+        }
+
+        stop() {
+          this.sessionToken += 1;
+          this.pendingCandidates = [];
+          this.hasRemoteDesc = false;
+          this.isApplyingRemoteAnswer = false;
+          if (this.ws) {
+            this.ws.close();
+            this.ws = null;
+          }
+          if (this.pc) {
+            this.pc.getSenders().forEach((s) => s.track?.stop());
+            this.pc.getReceivers().forEach((r) => r.track?.stop());
+            this.pc.close();
+            this.pc = null;
+          }
+          this.els.video.srcObject = null;
+          this.setBadge(
+            this.camera.online ? "Online" : "Offline",
+            this.camera.online ? "badge-online" : "badge-offline"
+          );
+          this.setOverlay(this.camera.online ? "Click Start" : "Camera offline");
+          this.els.startBtn.disabled = !this.camera.online;
+          this._resolveStartWaiters(false);
+        }
+      }
+
+      function buildGrid(cameraList) {
+        streams.forEach((s) => s.stop());
+        streams.clear();
+        grid.innerHTML = "";
+
+        for (const camera of cameraList) {
+          const tile = document.createElement("div");
+          tile.className = "cam-tile";
+          tile.innerHTML = `
+            <div class="cam-tile-header">
+              <span class="cam-name">${escHtml(camera.nickname)}</span>
+              <span class="cam-badge ${camera.online ? "badge-online" : "badge-offline"}">
+                ${camera.online ? "Online" : "Offline"}
+              </span>
+            </div>
+            <div class="cam-video-wrap">
+              ${
+                camera.thumbnail
+                  ? `<img class="cam-thumb" src="/api/thumbnail?url=${encodeURIComponent(camera.thumbnail)}" alt="" />`
+                  : ""
+              }
+              <video autoplay playsinline muted></video>
+              <div class="cam-overlay">${camera.online ? "Click Start" : "Camera offline"}</div>
+            </div>
+            <div class="cam-log"></div>
+            <div class="cam-footer">
+              <button class="start-btn" ${camera.online ? "" : "disabled"}>▶ Start</button>
+              <button class="snapshot-btn">📸 Snapshot</button>
+              <button class="stop-btn">■ Stop</button>
+              <span style="flex:1"></span>
+              <span style="font-size:0.72rem;color:#475569">${escHtml(camera.productModel)}</span>
+            </div>`;
+
+          grid.appendChild(tile);
+
+          const els = {
+            video: tile.querySelector("video"),
+            thumb: tile.querySelector(".cam-thumb"),
+            overlay: tile.querySelector(".cam-overlay"),
+            badge: tile.querySelector(".cam-badge"),
+            logEl: tile.querySelector(".cam-log"),
+            startBtn: tile.querySelector(".start-btn"),
+            snapshotBtn: tile.querySelector(".snapshot-btn"),
+            stopBtn: tile.querySelector(".stop-btn"),
+          };
+
+          const session = new StreamSession(camera, els);
+          streams.set(camera.mac, session);
+
+          els.startBtn.addEventListener("click", () => session.start());
+          els.snapshotBtn.addEventListener("click", () => session.refreshSnapshot());
+          els.stopBtn.addEventListener("click", () => session.stop());
+        }
+      }
+
+      async function loadCameras() {
+        statusBar.textContent = "Loading cameras…";
+        const res = await fetch("/api/cameras");
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to load cameras");
+        cameras = data.cameras;
+        buildGrid(cameras);
+        const online = cameras.filter((c) => c.online).length;
+        statusBar.textContent = `${cameras.length} cameras — ${online} online`;
+      }
+
+      refreshBtn.addEventListener("click", async () => {
+        try {
+          await loadCameras();
+        } catch (err) {
+          statusBar.textContent = "Error: " + err.message;
+        }
+      });
+
+      snapshotAllBtn.addEventListener("click", () => {
+        let delay = 0;
+        for (const session of streams.values()) {
+          setTimeout(() => session.refreshSnapshot(), delay);
+          delay += 150;
+        }
+      });
+
+      startAllBtn.addEventListener("click", async () => {
+        for (const session of streams.values()) {
+          if (!session.camera.online) continue;
+          await session.start();
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+      });
+
+      stopAllBtn.addEventListener("click", () => streams.forEach((s) => s.stop()));
+
+      loadCameras().catch((err) => {
+        statusBar.textContent = "Error: " + err.message;
+      });
+    </script>
+  </body>
+</html>

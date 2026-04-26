@@ -6,6 +6,12 @@ module.exports = Object.freeze({
   fordAppSecret: "4deekof1ba311c5c33a9cb8e12787e8c", // Required for Locks
   oliveSigningSecret: "wyze_app_secret_key_132", // Required for the thermostat
   oliveAppId: "9319141212m2ik", // Required for the thermostat
+  webSigningSecret: "gbJojEBViLklgwyyDikx5ztSvKBXI5oU", // Required for camera WebRTC stream info
+  webAppId: "strv_e7f78e9e7738dc50", // Required for camera WebRTC stream info
+  webAppInfo: "wyze_web_2.3.1", // Required for camera WebRTC stream info
+
+  // Wyze response codes (from wyzeapy types.py ResponseCodes enum)
+  deviceOfflineCode: "3019",
 
   // Application Information (for emulation)
   appInfo: "wyze_android_2.19.14", // Required for the thermostat

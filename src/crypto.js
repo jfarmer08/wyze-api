@@ -88,6 +88,24 @@ function iot3CreateSignature(bodyStr, access_token) {
     return crypto.createHmac("md5", secret).update(bodyStr).digest("hex");
 }
 
+function web_create_signature(payload, access_token) {
+    let body
+
+    if (typeof payload === "object") {
+        body = Object.keys(payload)
+            .sort()
+            .map(key => `${key}=${payload[key]}`)
+            .join("&")
+    } else {
+        body = payload
+    }
+
+    const access_key = `${access_token}${constants.webSigningSecret}`
+    const secret = crypto.createHash("md5").update(access_key).digest("hex")
+
+    return crypto.createHmac("md5", secret).update(body).digest("hex")
+}
+
 module.exports = {
     fordCreateSignature,
     oliveCreateSignatureSingle,
@@ -95,4 +113,5 @@ module.exports = {
     olive_create_signature,
     ford_create_signature,
     iot3CreateSignature,
+    web_create_signature,
 }

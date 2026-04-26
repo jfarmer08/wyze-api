@@ -11,6 +11,7 @@ const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
 const RokuAuthLib = require("./rokuAuth")
+const cameraStreamCapture = require("./cameraStreamCapture");
 
 module.exports = class WyzeAPI {
   constructor(options) {
@@ -1980,6 +1981,553 @@ module.exports = class WyzeAPI {
   }
 
   /**
+   * Fetch the WebRTC stream info for a camera. Returns a Kinesis Video
+   * signaling URL plus ICE/STUN/TURN servers — the credentials needed to
+   * negotiate a live WebRTC stream. Does not return a playable URL on its
+   * own; a WebRTC client (e.g. werift, go2rtc) is required to consume it.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} [options]
+   * @param {boolean} [options.substream=false] — request the lower-bitrate sub stream (experimental; depends on camera support)
+   * @returns {Promise<{signaling_url: string, ice_servers: Array<{url: string, username: string, credential: string}>}>}
+   */
+  async cameraGetStreamInfo(deviceMac, deviceModel, options = {}) {
+    await this.maybeLogin();
+
+    const parameters = { use_trickle: true };
+    if (options.substream) parameters.sub_stream = true;
+
+    const payload = {
+      device_list: [
+        {
+          device_id: deviceMac,
+          device_model: deviceModel,
+          provider: "webrtc",
+          parameters,
+        },
+      ],
+      nonce: String(Date.now()),
+    };
+    const body = JSON.stringify(payload);
+    const signature = crypto.web_create_signature(body, this.access_token);
+
+    const headers = {
+      "Accept-Encoding": "gzip",
+      appId: constants.webAppId,
+      appInfo: constants.webAppInfo,
+      access_token: this.access_token,
+      Authorization: this.access_token,
+      signature2: signature,
+      requestid: String(Date.now() % 100000),
+      "Content-Type": "application/json; charset=utf-8",
+    };
+
+    const url = `${constants.iot3BaseUrl}/app/v4/camera/get-streams`;
+    if (this.apiLogEnabled) {
+      this.log.info(`Performing request: ${url}`);
+    }
+    try {
+      const response = await axios.post(url, body, { headers });
+      // Honor X-RateLimit-Remaining: sleeps if dangerously low. Won't throw.
+      await this._checkRateLimit(response.headers);
+
+      const data = response.data;
+      if (this.apiLogEnabled) {
+        this.log.info(`API response cameraGetStreamInfo: ${JSON.stringify(data)}`);
+      }
+
+      const code = data?.code;
+      const errorMessage = data?.msg || data?.description || "";
+
+      if (typeof code !== "undefined" && Number(code) !== 1) {
+        if (this._isAccessTokenError(code, errorMessage)) {
+          await this._handleAccessTokenError(response, errorMessage, code, url, body);
+          throw new Error(
+            `Wyze access token error (${code}): ${errorMessage}. Token has been refreshed; retry the call.`
+          );
+        }
+        if (this._isRateLimitError(code, errorMessage)) {
+          throw new Error(`Wyze API rate limited (${code}): ${errorMessage}`);
+        }
+        if (String(code) === constants.deviceOfflineCode) {
+          throw new Error(`Camera is offline: ${JSON.stringify(data)}`);
+        }
+        throw new Error(`Wyze API Error (${code}) - ${errorMessage}`);
+      }
+
+      if (!Array.isArray(data.data) || data.data.length !== 1) {
+        throw new Error(`Unexpected response from cameraGetStreamInfo: ${JSON.stringify(data)}`);
+      }
+
+      const entry = data.data[0];
+      if (!entry.property) {
+        throw new Error(`Unexpected response from cameraGetStreamInfo: ${JSON.stringify(entry)}`);
+      }
+      if (entry.property["iot-device::iot-state"] !== 1) {
+        throw new Error(`Camera is offline: ${JSON.stringify(entry)}`);
+      }
+      if (entry.property["iot-device::iot-power"] !== 1) {
+        throw new Error(`Camera is off: ${JSON.stringify(entry)}`);
+      }
+      return entry.params;
+    } catch (error) {
+      this.log.error(`Request failed: ${error.message}`);
+      if (error.response) {
+        this.log.error(`Response cameraGetStreamInfo (${error.response.status} - ${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`);
+      }
+      throw error;
+    }
+  }
+
+  /**
+   * Convenience: return only the Kinesis Video WebRTC signaling URL.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @returns {Promise<string>}
+   */
+  async cameraGetSignalingUrl(deviceMac, deviceModel, options = {}) {
+    const info = await this.cameraGetStreamInfo(deviceMac, deviceModel, options);
+    return info.signaling_url;
+  }
+
+  /**
+   * Convenience: return only the ICE/STUN/TURN server list for WebRTC negotiation.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @returns {Promise<Array<{url: string, username: string, credential: string}>>}
+   */
+  async cameraGetIceServers(deviceMac, deviceModel, options = {}) {
+    const info = await this.cameraGetStreamInfo(deviceMac, deviceModel, options);
+    return info.ice_servers;
+  }
+
+  // Camera helpers — pure (sync, operate on a device object)
+
+  /**
+   * @param {Object} device
+   * @returns {boolean}
+   */
+  cameraIsOnline(device) {
+    // Wyze's get_device_list reports online state under different fields
+    // depending on device type and API version. Check the known ones in
+    // priority order; first defined wins.
+    if (device?.conn_state !== undefined) return device.conn_state === 1;
+    if (device?.device_params?.status !== undefined) return device.device_params.status === 1;
+    if (device?.is_online !== undefined) return Boolean(device.is_online);
+    return false;
+  }
+
+  /**
+   * @param {Object} device
+   * @returns {string|null}
+   */
+  cameraGetThumbnail(device) {
+    const thumbnails = device?.device_params?.camera_thumbnails;
+    if (Array.isArray(thumbnails) && thumbnails.length > 0) {
+      return thumbnails[0]?.url ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * @param {Object} device
+   * @returns {Object|null}
+   */
+  cameraGetSnapshot(device) {
+    const thumbnails = device?.device_params?.camera_thumbnails;
+    if (Array.isArray(thumbnails) && thumbnails.length > 0) {
+      return thumbnails[0] ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * @param {Object} device
+   * @returns {{mac: string, productModel: string, nickname: string, online: boolean, thumbnail: string|null}}
+   */
+  cameraToSummary(device) {
+    return {
+      mac: device?.mac,
+      productModel: device?.product_model,
+      nickname: device?.nickname,
+      online: this.cameraIsOnline(device),
+      thumbnail: this.cameraGetThumbnail(device),
+    };
+  }
+
+  // Camera helpers — lookup (async)
+
+  async getCameras() {
+    return this.getDevicesByType("Camera");
+  }
+
+  async getOnlineCameras() {
+    const cameras = await this.getCameras();
+    return cameras.filter((camera) => this.cameraIsOnline(camera));
+  }
+
+  /**
+   * Look up a single camera by MAC address.
+   * @param {string} mac
+   * @returns {Promise<Object|undefined>}
+   */
+  async getCamera(mac) {
+    const cameras = await this.getCameras();
+    return cameras.find((camera) => camera.mac === mac);
+  }
+
+  async getCameraSnapshot(mac) {
+    const camera = await this.getCamera(mac);
+    return camera ? this.cameraGetSnapshot(camera) : null;
+  }
+
+  async getCameraSnapshotUrl(mac) {
+    const snapshot = await this.getCameraSnapshot(mac);
+    return snapshot?.url ?? null;
+  }
+
+  async getCameraSummaries() {
+    const cameras = await this.getCameras();
+    return cameras.map((device) => this.cameraToSummary(device));
+  }
+
+  /**
+   * Capture a single JPEG frame by negotiating a headless WebRTC session
+   * with the camera. Requires `ffmpeg` on the system PATH.
+   *
+   * Results are cached per-mac for `cacheTtlMs` (default 10s) so that rapid
+   * repeat callers (e.g., multiple HomeKit accessories) share one capture.
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} [options]
+   * @param {number} [options.timeoutMs=20000] — overall timeout for negotiation + frame
+   * @param {boolean} [options.noCache=false] — bypass and overwrite the per-mac cache
+   * @param {number} [options.cacheTtlMs=10000]
+   * @returns {Promise<Buffer>} JPEG bytes
+   */
+  async cameraCaptureSnapshot(deviceMac, deviceModel, options = {}) {
+    const { timeoutMs = 20_000, noCache = false, cacheTtlMs = 10_000 } = options;
+
+    if (!this._snapshotCaptureCache) this._snapshotCaptureCache = new Map();
+    if (!noCache) {
+      const entry = this._snapshotCaptureCache.get(deviceMac);
+      if (entry && entry.expiresAt > Date.now()) return entry.buffer;
+    }
+
+    const conn = await this.getCameraWebRTCConnectionInfo(deviceMac, deviceModel, {
+      noCache: true,
+      includeClientId: false,
+    });
+
+    const buffer = await cameraStreamCapture.captureStreamFrame({
+      signalingUrl: conn.signalingUrl,
+      iceServers: conn.iceServers,
+      logger: this.apiLogEnabled ? this.log : null,
+      timeoutMs,
+    });
+
+    if (!noCache) {
+      this._snapshotCaptureCache.set(deviceMac, {
+        buffer,
+        expiresAt: Date.now() + cacheTtlMs,
+      });
+    }
+    return buffer;
+  }
+
+  /**
+   * Get a JPEG image for a camera. Tries the cloud thumbnail first; if
+   * unavailable or the download fails, falls back to a live WebRTC capture
+   * via {@link cameraCaptureSnapshot}.
+   *
+   * @param {string} mac
+   * @param {Object} [options]
+   * @param {boolean} [options.skipCloud=false] — go straight to live capture
+   * @param {number} [options.timeoutMs] — forwarded to capture
+   * @param {boolean} [options.noCache=false] — forwarded to capture
+   * @returns {Promise<{buffer: Buffer, source: "cloud"|"capture"}>}
+   */
+  async getCameraSnapshotImage(mac, options = {}) {
+    if (!options.skipCloud) {
+      const cloud = await this.getCameraSnapshot(mac);
+      if (cloud?.url) {
+        try {
+          const resp = await axios.get(cloud.url, { responseType: "arraybuffer" });
+          return { buffer: Buffer.from(resp.data), source: "cloud" };
+        } catch (err) {
+          this.log.warning(`Cloud snapshot fetch failed, falling back to capture: ${err.message}`);
+        }
+      }
+    }
+
+    const camera = await this.getCamera(mac);
+    if (!camera) throw new Error(`Camera not found: ${mac}`);
+    const buffer = await this.cameraCaptureSnapshot(camera.mac, camera.product_model, options);
+    return { buffer, source: "capture" };
+  }
+
+  /**
+   * Look up a single camera by nickname (case-insensitive).
+   * @param {string} nickname
+   * @returns {Promise<Object|undefined>}
+   */
+  async getCameraByName(nickname) {
+    const cameras = await this.getCameras();
+    return cameras.find(
+      (camera) => camera?.nickname?.toLowerCase() === nickname?.toLowerCase()
+    );
+  }
+
+  async getOfflineCameras() {
+    const cameras = await this.getCameras();
+    return cameras.filter((camera) => !this.cameraIsOnline(camera));
+  }
+
+  // Camera helpers — device-info accessors
+
+  cameraGetSignalStrength(device) {
+    return device?.device_params?.signal_strength ?? null;
+  }
+
+  cameraGetIp(device) {
+    return device?.device_params?.ip ?? null;
+  }
+
+  cameraGetFirmware(device) {
+    return device?.firmware_ver ?? null;
+  }
+
+  cameraGetTimezone(device) {
+    return device?.timezone_name ?? null;
+  }
+
+  cameraGetLastSeen(device) {
+    const ts = device?.device_params?.last_login_time;
+    return typeof ts === "number" ? new Date(ts) : null;
+  }
+
+  // Camera helpers — stream connection
+
+  /**
+   * Generate a unique client identifier for tracking a viewer's WebRTC
+   * session against a camera. Useful for log correlation, for client-side
+   * bookkeeping that distinguishes concurrent viewers, and for injection
+   * into a Kinesis Video signaling URL via {@link setCameraSignalingClientId}.
+   * @param {string|Object} deviceOrMac — a device object or MAC string
+   * @param {string} [prefix="viewer"]
+   * @returns {string}
+   */
+  createCameraStreamClientId(deviceOrMac, prefix = "viewer") {
+    const mac = typeof deviceOrMac === "string" ? deviceOrMac : deviceOrMac?.mac;
+    const safePrefix = String(prefix || "viewer").replace(/[^a-zA-Z0-9_-]/g, "-");
+    const macSlug =
+      (mac || "camera").replace(/[^a-zA-Z0-9]/g, "").slice(-8).toLowerCase() || "camera";
+    const random = nodeCrypto.randomBytes(4).toString("hex");
+    return `${safePrefix}-${macSlug}-${Date.now()}-${random}`;
+  }
+
+  /**
+   * Decode double-encoded Kinesis Video signaling URLs (Wyze occasionally
+   * returns `%25` where `%` is intended). Idempotent on already-decoded URLs.
+   * @param {string} signalingUrl
+   * @returns {string}
+   */
+  normalizeCameraSignalingUrl(signalingUrl) {
+    if (!signalingUrl || typeof signalingUrl !== "string") return signalingUrl;
+    if (signalingUrl.includes("%25")) {
+      try {
+        return decodeURIComponent(signalingUrl);
+      } catch (_) {
+        return signalingUrl;
+      }
+    }
+    return signalingUrl;
+  }
+
+  /**
+   * Convert Wyze's `{url, username, credential}` ICE entries into the
+   * `{urls, ...}` shape expected by `RTCPeerConnection`. Drops malformed
+   * entries (missing `url`).
+   * @param {Array<{url: string, username?: string, credential?: string}>} iceServers
+   * @returns {Array<{urls: string, username?: string, credential?: string}>}
+   */
+  sanitizeCameraIceServers(iceServers = []) {
+    return iceServers
+      .map((server) => {
+        if (!server || !server.url) return null;
+        const out = { urls: server.url };
+        if (server.username) out.username = server.username;
+        if (server.credential) out.credential = server.credential;
+        return out;
+      })
+      .filter(Boolean);
+  }
+
+  /**
+   * Parse online/power state from a raw {@link cameraGetStreamInfo} response
+   * without throwing. Returns null on malformed input.
+   * @param {Object} streamInfoResponse
+   * @returns {{online: boolean, powered: boolean}|null}
+   */
+  parseCameraStatus(streamInfoResponse) {
+    try {
+      const item = streamInfoResponse?.data?.[0];
+      if (!item?.property) return null;
+      return {
+        online: item.property["iot-device::iot-state"] === 1,
+        powered: item.property["iot-device::iot-power"] === 1,
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /**
+   * Bundle everything a WebRTC client needs to start a session with a camera:
+   * the signed signaling URL (returned untouched — Wyze pre-signs it with
+   * AWS SigV4), sanitized ICE servers (in the `{urls,...}` shape
+   * `RTCPeerConnection` expects), and the `auth_token` from the API. Also
+   * generates a client ID for app-side tracking; this is NOT injected into
+   * the URL.
+   *
+   * Results are cached per (mac, model, substream) for {@link options.cacheTtlMs}
+   * (default 60s) to avoid hammering the API on rapid reconnects. Pass
+   * `noCache: true` to bypass.
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} [options]
+   * @param {boolean} [options.substream=false] — request the lower-bitrate sub stream
+   * @param {boolean} [options.includeClientId=true] — generate (or accept) a client ID in the result
+   * @param {string} [options.clientId] — caller-supplied client ID (overrides generation)
+   * @param {string} [options.clientIdPrefix="viewer"] — prefix when generating a client ID
+   * @param {boolean} [options.noCache=false] — bypass the in-memory cache
+   * @param {number} [options.cacheTtlMs=60000] — cache TTL when caching is enabled
+   * @returns {Promise<{signalingUrl: string, iceServers: Array<Object>, authToken: string|null, clientId?: string, mac: string, model: string, substream: boolean, cached: boolean}>}
+   */
+  _streamCacheKey(deviceMac, deviceModel, substream) {
+    return `${deviceMac}:${deviceModel}:${substream ? "sub" : "main"}`;
+  }
+
+  async getCameraWebRTCConnectionInfo(deviceMac, deviceModel, options = {}) {
+    const {
+      substream = false,
+      includeClientId = true,
+      clientId,
+      clientIdPrefix = "viewer",
+      noCache = false,
+      cacheTtlMs = 60_000,
+    } = options;
+
+    if (!this._streamInfoCache) this._streamInfoCache = new Map();
+    const cacheKey = this._streamCacheKey(deviceMac, deviceModel, substream);
+    let bundle;
+    let cached = false;
+
+    if (!noCache) {
+      const entry = this._streamInfoCache.get(cacheKey);
+      if (entry && entry.expiresAt > Date.now()) {
+        bundle = entry.bundle;
+        cached = true;
+      }
+    }
+
+    if (!bundle) {
+      const info = await this.cameraGetStreamInfo(deviceMac, deviceModel, { substream });
+      bundle = {
+        signalingUrl: this.normalizeCameraSignalingUrl(info.signaling_url),
+        iceServers: this.sanitizeCameraIceServers(info.ice_servers),
+        authToken: info.auth_token ?? null,
+      };
+      if (!noCache) {
+        this._streamInfoCache.set(cacheKey, {
+          bundle,
+          expiresAt: Date.now() + cacheTtlMs,
+        });
+      }
+    }
+
+    const result = {
+      ...bundle,
+      mac: deviceMac,
+      model: deviceModel,
+      substream,
+      cached,
+    };
+
+    if (includeClientId) {
+      result.clientId =
+        clientId || this.createCameraStreamClientId(deviceMac, clientIdPrefix);
+    }
+
+    return result;
+  }
+
+  /**
+   * Like {@link getCameraWebRTCConnectionInfo} but retries with exponential
+   * backoff on transient failures.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} [options] — forwarded to {@link getCameraWebRTCConnectionInfo}
+   * @param {Object} [retryOptions]
+   * @param {number} [retryOptions.maxAttempts=3]
+   * @param {number} [retryOptions.baseDelayMs=2000]
+   * @param {Function} [retryOptions.onRetry] — called as `(attempt, error)` before each retry
+   * @returns {Promise<Object>}
+   */
+  async getCameraWebRTCConnectionInfoWithReconnect(
+    deviceMac,
+    deviceModel,
+    options = {},
+    retryOptions = {}
+  ) {
+    return this.cameraStreamWithReconnect(
+      () => this.getCameraWebRTCConnectionInfo(deviceMac, deviceModel, options),
+      retryOptions
+    );
+  }
+
+  /**
+   * Wrap any async stream-related call with exponential-backoff retry.
+   * @param {Function} fn
+   * @param {Object} [options]
+   * @param {number} [options.maxAttempts=3]
+   * @param {number} [options.baseDelayMs=2000]
+   * @param {Function} [options.onRetry]
+   */
+  async cameraStreamWithReconnect(fn, { maxAttempts = 3, baseDelayMs = 2000, onRetry } = {}) {
+    let attempt = 0;
+    while (true) {
+      try {
+        return await fn();
+      } catch (err) {
+        attempt += 1;
+        if (attempt >= maxAttempts) throw err;
+        if (onRetry) onRetry(attempt, err);
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  /**
+   * Clear the in-memory stream-info cache. Pass a MAC to clear just one camera,
+   * or omit to clear all.
+   * @param {string} [deviceMac]
+   */
+  clearCameraStreamCache(deviceMac) {
+    if (!this._streamInfoCache) return;
+    if (!deviceMac) {
+      this._streamInfoCache.clear();
+      return;
+    }
+    for (const key of this._streamInfoCache.keys()) {
+      if (key.startsWith(`${deviceMac}:`)) this._streamInfoCache.delete(key);
+    }
+  }
+
+  /**
    * Turn Plug 0 = off or 1 = on
    * @param {string} deviceMac
    * @param {string} deviceModel
@@ -2452,3 +3000,16 @@ module.exports = class WyzeAPI {
   }
 
 };
+
+/**
+ * Camera stream lifecycle states. Numeric values mirror docker-wyze-bridge's
+ * StreamStatus so they can be used interchangeably with that ecosystem.
+ */
+module.exports.StreamStatus = Object.freeze({
+  OFFLINE: -90,
+  STOPPING: -1,
+  DISABLED: 0,
+  STOPPED: 1,
+  CONNECTING: 2,
+  CONNECTED: 3,
+});

@@ -1,0 +1,27 @@
+# Sync the in-repo wiki/ directory to the project's GitHub Wiki.
+# Wikis live in a separate <repo>.wiki.git repository; this workflow keeps
+# them in lockstep with what's committed under wiki/ on the main branch.
+
+name: Sync wiki
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'wiki/**'
+      - '.github/workflows/wiki-sync.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Push wiki/ to GitHub Wiki
+        uses: Andrew-Chen-Wang/github-wiki-action@v4
+        with:
+          path: wiki/

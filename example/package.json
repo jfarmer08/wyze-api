@@ -5,6 +5,8 @@
   "homepage": "https://github.com/jfarmer08/wyze-api",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
+    "viewer": "node viewer.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [
