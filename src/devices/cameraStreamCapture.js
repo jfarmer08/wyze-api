@@ -71,7 +71,14 @@ async function pickFreeUdpPort() {
   });
 }
 
-function writeSdpFile(rtpPort) {
+function writeSdpFile(rtpPort, spropParameterSets = null) {
+  // sprop-parameter-sets gives FFmpeg the H.264 SPS/PPS up front. Without it,
+  // FFmpeg has to wait for in-band parameter sets — and Wyze cameras often
+  // only put them in the WebRTC answer SDP, never in RTP. Result: continuous
+  // "non-existing PPS 0 referenced / no frame!" decoding errors.
+  const fmtp = spropParameterSets
+    ? `a=fmtp:96 packetization-mode=1;sprop-parameter-sets=${spropParameterSets}\n`
+    : `a=fmtp:96 packetization-mode=1\n`;
   const sdp = `v=0
 o=- 0 0 IN IP4 127.0.0.1
 s=WyzeCapture
@@ -79,14 +86,30 @@ c=IN IP4 127.0.0.1
 t=0 0
 m=video ${rtpPort} RTP/AVP 96
 a=rtpmap:96 H264/90000
-a=fmtp:96 packetization-mode=1
-`;
+${fmtp}`;
   const sdpPath = path.join(
     os.tmpdir(),
     `wyze-capture-${process.pid}-${nodeCrypto.randomBytes(4).toString("hex")}.sdp`
   );
   fs.writeFileSync(sdpPath, sdp);
   return sdpPath;
+}
+
+/**
+ * Pull `sprop-parameter-sets=<base64>,<base64>` out of the H.264 fmtp line
+ * in a remote SDP. Returns null if the camera didn't advertise them.
+ */
+function extractSpropParameterSets(sdp) {
+  if (typeof sdp !== "string") return null;
+  // Find the H.264 payload type from rtpmap, then look for its fmtp.
+  const rtpmapMatch = sdp.match(/a=rtpmap:(\d+)\s+H264\/90000/i);
+  if (!rtpmapMatch) return null;
+  const pt = rtpmapMatch[1];
+  const fmtpRegex = new RegExp(`a=fmtp:${pt}\\s+([^\\r\\n]+)`, "i");
+  const fmtpMatch = sdp.match(fmtpRegex);
+  if (!fmtpMatch) return null;
+  const spropMatch = fmtpMatch[1].match(/sprop-parameter-sets=([^;\s]+)/i);
+  return spropMatch ? spropMatch[1] : null;
 }
 
 function localIpAddress() {
@@ -118,6 +141,33 @@ a=fmtp:111 minptime=10;useinbandfec=1
   return sdpPath;
 }
 
+/**
+ * Extract H.264 NAL units from an RTP payload. Returns an array of Buffer
+ * (each Buffer is a complete NAL unit, including its 1-byte NAL header).
+ * Handles single-NAL and STAP-A (type 24) packetization. SPS/PPS are tiny
+ * and never fragmented in practice, so FU-A reassembly isn't needed here.
+ */
+function _extractH264Nals(payload) {
+  if (!payload || payload.length < 1) return [];
+  const nalType = payload[0] & 0x1f;
+  if (nalType >= 1 && nalType <= 23) {
+    return [payload];
+  }
+  if (nalType === 24) {
+    const out = [];
+    let i = 1;
+    while (i + 2 <= payload.length) {
+      const size = (payload[i] << 8) | payload[i + 1];
+      i += 2;
+      if (i + size > payload.length) break;
+      out.push(payload.slice(i, i + size));
+      i += size;
+    }
+    return out;
+  }
+  return [];
+}
+
 function _spawnFfmpeg(sdpPath) {
   return spawn(resolveFfmpegPath(), [
     "-loglevel", "error",
@@ -126,7 +176,7 @@ function _spawnFfmpeg(sdpPath) {
     "-flags", "low_delay",
     "-i", sdpPath,
     "-frames:v", "1",
-    "-vsync", "passthrough",
+    "-fps_mode", "passthrough",
     "-f", "image2",
     "-c:v", "mjpeg",
     "-q:v", "2",
@@ -323,6 +373,8 @@ async function startRtpForwarding({
   localAudioRtpPort = null,
   logger = null,
   timeoutMs = 15_000,
+  onVideoIdle = null,
+  videoIdleMs = 10_000,
 }) {
   const log = (level, msg) => {
     if (!logger) return;
@@ -342,10 +394,55 @@ async function startRtpForwarding({
   pc.addTransceiver("video", { direction: "recvonly" });
   if (localAudioRtpPort) pc.addTransceiver("audio", { direction: "recvonly" });
 
+  let pliTimer = null;
+  let videoTrackInfo = null; // { receiver, ssrc } — set on first video track
+  let lastVideoRtpAt = 0;
+  let idleWatchdog = null;
+  let idleFired = false;
+
+  // Resolves with `<base64Sps>,<base64Pps>` once both NALs are seen in RTP.
+  let capturedSps = null;
+  let capturedPps = null;
+  let resolveSpropFromRtp;
+  const spropFromRtpPromise = new Promise((r) => { resolveSpropFromRtp = r; });
+
   pc.onTrack.subscribe((track) => {
     log("debug", `forwarding track kind=${track.kind}`);
     if (track.kind === "video") {
+      videoTrackInfo = { receiver: pc.getReceivers().find((r) => r.kind === "video"), ssrc: track.ssrc };
+      // Ask the camera to emit a keyframe immediately so HomeKit doesn't have
+      // to wait for the next natural IDR. Keep prodding until we've actually
+      // captured SPS+PPS — some firmwares send P-frames first and ignore the
+      // first PLI or two.
+      const requestPli = () => {
+        if (videoTrackInfo?.receiver && videoTrackInfo?.ssrc) {
+          videoTrackInfo.receiver.sendRtcpPLI(videoTrackInfo.ssrc).catch(() => {});
+        }
+      };
+      requestPli();
+      pliTimer = setInterval(() => {
+        if (capturedSps && capturedPps) {
+          clearInterval(pliTimer);
+          pliTimer = null;
+        } else {
+          requestPli();
+        }
+      }, 500);
       track.onReceiveRtp.subscribe((rtp) => {
+        lastVideoRtpAt = Date.now();
+        // Watch for SPS/PPS NAL units so we can build sprop-parameter-sets
+        // ourselves when the camera doesn't advertise them in the SDP.
+        if (!capturedSps || !capturedPps) {
+          for (const nal of _extractH264Nals(rtp.payload)) {
+            const t = nal[0] & 0x1f;
+            if (t === 7 && !capturedSps) capturedSps = nal;
+            else if (t === 8 && !capturedPps) capturedPps = nal;
+          }
+          if (capturedSps && capturedPps) {
+            const sprop = `${capturedSps.toString("base64")},${capturedPps.toString("base64")}`;
+            resolveSpropFromRtp(sprop);
+          }
+        }
         try { videoSock.send(rtp.serialize(), localRtpPort, "127.0.0.1"); } catch (_) {}
       });
     } else if (track.kind === "audio" && audioSock) {
@@ -404,15 +501,58 @@ async function startRtpForwarding({
   await Promise.race([negotiated, timeout]);
   log("debug", "WebRTC negotiation complete — forwarding RTP");
 
+  // Get SPS/PPS for FFmpeg's H.264 decoder.
+  // 1) Prefer the camera's SDP answer.
+  // 2) Fall back to capturing them from the live RTP stream — Wyze cameras
+  //    in particular often omit them from SDP, so this is the path that
+  //    actually works for their hardware.
+  let spropParameterSets = extractSpropParameterSets(pc.remoteDescription?.sdp ?? null);
+  if (spropParameterSets) {
+    log("debug", "extracted sprop-parameter-sets from answer SDP");
+  } else {
+    log("debug", "no sprop in SDP — capturing SPS/PPS from RTP stream");
+    const rtpTimeout = new Promise((res) => setTimeout(() => res(null), 8000));
+    spropParameterSets = await Promise.race([spropFromRtpPromise, rtpTimeout]);
+    if (spropParameterSets) log("debug", "captured SPS/PPS from RTP");
+    else log("warning", "timed out waiting for SPS/PPS — H.264 may not decode");
+  }
+
+  // After ffmpeg comes up, the caller can call requestKeyframe() to force
+  // a fresh IDR so decoding starts immediately rather than at the next
+  // natural keyframe interval.
+  const requestKeyframe = () => {
+    if (videoTrackInfo?.receiver && videoTrackInfo?.ssrc) {
+      videoTrackInfo.receiver.sendRtcpPLI(videoTrackInfo.ssrc).catch(() => {});
+    }
+  };
+
+  // Silent-stall watchdog: WebRTC sometimes stops delivering RTP without
+  // closing the peer connection. If we go too long with no video packets,
+  // notify the caller so it can rebuild the stream.
+  if (onVideoIdle) {
+    lastVideoRtpAt = Date.now();
+    idleWatchdog = setInterval(() => {
+      if (idleFired) return;
+      const gap = Date.now() - lastVideoRtpAt;
+      if (gap >= videoIdleMs) {
+        idleFired = true;
+        log("warning", `no video RTP for ${gap}ms — signaling stall`);
+        try { onVideoIdle(); } catch (_) {}
+      }
+    }, Math.min(2000, videoIdleMs)).unref();
+  }
+
   const stop = () => {
     log("debug", "stopping RTP forwarding");
+    if (pliTimer) { clearInterval(pliTimer); pliTimer = null; }
+    if (idleWatchdog) { clearInterval(idleWatchdog); idleWatchdog = null; }
     try { ws.close(); } catch (_) {}
     try { pc.close(); } catch (_) {}
     try { videoSock.close(); } catch (_) {}
     try { audioSock?.close(); } catch (_) {}
   };
 
-  return { stop };
+  return { stop, spropParameterSets, requestKeyframe };
 }
 
 module.exports = {
@@ -423,4 +563,5 @@ module.exports = {
   writeAudioSdpFile,
   resolveFfmpegPath,
   localIpAddress,
+  extractSpropParameterSets,
 };

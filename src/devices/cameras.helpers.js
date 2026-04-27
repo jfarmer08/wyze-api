@@ -296,7 +296,7 @@ module.exports = {
    * Returns `{ stop() }` — call stop() when the stream ends.
    */
   async cameraStartRtpForwarding(deviceMac, deviceModel, localRtpPort, options = {}) {
-    const { localAudioRtpPort, ...rest } = options;
+    const { localAudioRtpPort, onVideoIdle, videoIdleMs, ...rest } = options;
     const conn = await this.getCameraWebRTCConnectionInfo(deviceMac, deviceModel, {
       ...rest,
       noCache: true,
@@ -306,6 +306,8 @@ module.exports = {
       iceServers: conn.iceServers,
       localRtpPort,
       localAudioRtpPort,
+      onVideoIdle,
+      videoIdleMs,
       logger: this.apiLogEnabled ? this.log : null,
     });
   },
@@ -316,8 +318,10 @@ module.exports = {
    */
   async prepareCameraHKStream() {
     const [localRtpPort, localAudioRtpPort] = await Promise.all([pickFreeUdpPort(), pickFreeUdpPort()]);
-    const videoSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
-    const audioSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
+    // Mask to 31 bits — FFmpeg's -ssrc flag treats the value as signed int32
+    // and rejects anything > 2147483647.
+    const videoSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0) & 0x7FFFFFFF;
+    const audioSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0) & 0x7FFFFFFF;
     const localAddress = localIpAddress();
     return { localRtpPort, localAudioRtpPort, videoSsrc, audioSsrc, localAddress };
   },
@@ -350,8 +354,10 @@ module.exports = {
     };
 
     const MAX_RETRIES = 3;
+    const MAX_AUDIO_RETRIES = 3;
     let stopped = false;
     let retries = 0;
+    let audioRetries = 0;
 
     // Current-attempt resources
     let forwarder = null;
@@ -359,8 +365,10 @@ module.exports = {
     let audioFfmpeg = null;
     let videoSdpPath = null;
     let audioSdpPath = null;
+    let keepaliveTimer = null;
 
     const cleanup = () => {
+      if (keepaliveTimer) { clearInterval(keepaliveTimer); keepaliveTimer = null; }
       try { videoFfmpeg?.kill("SIGKILL"); } catch (_) {}
       try { audioFfmpeg?.kill("SIGKILL"); } catch (_) {}
       try { forwarder?.stop(); } catch (_) {}
@@ -370,23 +378,98 @@ module.exports = {
       videoSdpPath = audioSdpPath = null;
     };
 
+    // Spawn (or respawn) the audio FFmpeg process. The forwarder keeps
+    // pumping RTP into localAudioRtpPort regardless, so audio recovery is
+    // independent of WebRTC — we only need to relaunch ffmpeg.
+    const spawnAudio = () => {
+      if (!(localAudioRtpPort && audioPort && audioSrtpKey && audioSrtpSalt)) return;
+      audioSdpPath = writeAudioSdpFile(localAudioRtpPort);
+      const audioSrtpParams = Buffer.concat([audioSrtpKey, audioSrtpSalt]).toString("base64");
+
+      audioFfmpeg = spawn(resolveFfmpegPath(), [
+        "-loglevel", "warning",
+        "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
+        "-fflags", "+genpts+nobuffer",
+        "-flags", "low_delay",
+        "-i", audioSdpPath,
+        "-c:a", "libopus",
+        "-ar", "24000",
+        "-ac", "1",
+        "-b:a", "24k",
+        "-payload_type", "110",
+        "-ssrc", String(audioSsrc),
+        "-f", "rtp",
+        "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
+        "-srtp_out_params", audioSrtpParams,
+        `srtp://${targetAddress}:${audioPort}?rtcpport=${audioRtcpPort}&pkt_size=188`,
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+
+      if (logger) {
+        audioFfmpeg.stderr.on("data", (chunk) =>
+          log("debug", `[stream] [ffmpeg/audio] ${chunk.toString().trimEnd()}`)
+        );
+      }
+
+      audioFfmpeg.once("close", async (code) => {
+        if (stopped) return;
+        log("warn", `[stream] FFmpeg/audio exited (${code})`);
+        try { if (audioSdpPath) fs.unlinkSync(audioSdpPath); } catch (_) {}
+        audioFfmpeg = null;
+        audioSdpPath = null;
+        if (audioRetries < MAX_AUDIO_RETRIES) {
+          audioRetries++;
+          const delay = Math.min(1000 * audioRetries, 8000);
+          log("debug", `[stream] Restarting audio in ${delay}ms (attempt ${audioRetries}/${MAX_AUDIO_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delay));
+          if (!stopped && videoFfmpeg) spawnAudio();
+        } else {
+          log("warn", "[stream] Audio retry budget exhausted — continuing video-only");
+        }
+      });
+    };
+
     const attempt = async () => {
+      // Silent-stall recovery: if WebRTC quietly stops delivering video,
+      // kill the video ffmpeg so its close-handler triggers a full reconnect.
+      const onVideoIdle = () => {
+        if (stopped) return;
+        log("warn", "[stream] video idle — forcing reconnect");
+        try { videoFfmpeg?.kill("SIGKILL"); } catch (_) {}
+      };
+
       forwarder = await this.cameraStartRtpForwarding(
         deviceMac, deviceModel, localRtpPort,
-        localAudioRtpPort ? { localAudioRtpPort } : {}
+        {
+          ...(localAudioRtpPort ? { localAudioRtpPort } : {}),
+          onVideoIdle,
+          videoIdleMs: 10_000,
+        }
       );
 
-      // Video stream
-      videoSdpPath = writeSdpFile(localRtpPort);
+      // Video stream — bake the camera's SPS/PPS into the SDP so FFmpeg can
+      // decode the very first IDR slice without waiting for in-band params.
+      videoSdpPath = writeSdpFile(localRtpPort, forwarder.spropParameterSets);
       const videoSrtpParams = Buffer.concat([srtpKey, srtpSalt]).toString("base64");
 
       videoFfmpeg = spawn(resolveFfmpegPath(), [
         "-loglevel", "warning",
         "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
-        "-fflags", "+genpts+nobuffer",
+        // +discardcorrupt + igndts + ignore_err keeps FFmpeg running through
+        // packet loss / out-of-order / DTS hiccups instead of exiting (0)
+        // mid-stream, which used to trigger our 2-4s reconnect cycle and
+        // look like jitter to the viewer.
+        "-fflags", "+genpts+discardcorrupt+igndts+nobuffer",
         "-flags", "low_delay",
+        "-err_detect", "ignore_err",
+        "-max_delay", "500000",
+        "-reorder_queue_size", "0",
         "-i", videoSdpPath,
         "-c:v", "copy",
+        // Let timestamps pass through unchanged — we're stream-copying H.264
+        // and the SRTP output side doesn't care about monotonic DTS. Without
+        // this, FFmpeg spams "Non-monotonous DTS" every time RTP arrives
+        // slightly out of order. (`-vsync` was renamed to `-fps_mode`.)
+        "-fps_mode", "passthrough",
         "-payload_type", "99",
         "-ssrc", String(videoSsrc),
         "-f", "rtp",
@@ -397,39 +480,22 @@ module.exports = {
 
       if (logger) {
         videoFfmpeg.stderr.on("data", (chunk) =>
-          log("debug", `[stream] [ffmpeg/video] ${chunk.toString().trimEnd()}`)
+          log("warn", `[stream] [ffmpeg/video] ${chunk.toString().trimEnd()}`)
         );
       }
 
-      // Audio stream (optional — only if HomeKit provided audio params)
-      if (localAudioRtpPort && audioPort && audioSrtpKey && audioSrtpSalt) {
-        audioSdpPath = writeAudioSdpFile(localAudioRtpPort);
-        const audioSrtpParams = Buffer.concat([audioSrtpKey, audioSrtpSalt]).toString("base64");
+      // Audio stream (optional — only if HomeKit provided audio params).
+      // Self-heals via spawnAudio's close-handler if audio FFmpeg dies while
+      // video is still running.
+      audioRetries = 0;
+      spawnAudio();
 
-        audioFfmpeg = spawn(resolveFfmpegPath(), [
-          "-loglevel", "warning",
-          "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
-          "-fflags", "+genpts+nobuffer",
-          "-flags", "low_delay",
-          "-i", audioSdpPath,
-          "-c:a", "libopus",
-          "-ar", "24000",
-          "-ac", "1",
-          "-b:a", "24k",
-          "-payload_type", "110",
-          "-ssrc", String(audioSsrc),
-          "-f", "rtp",
-          "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
-          "-srtp_out_params", audioSrtpParams,
-          `srtp://${targetAddress}:${audioPort}?rtcpport=${audioRtcpPort}&pkt_size=188`,
-        ], { stdio: ["ignore", "pipe", "pipe"] });
-
-        if (logger) {
-          audioFfmpeg.stderr.on("data", (chunk) =>
-            log("debug", `[stream] [ffmpeg/audio] ${chunk.toString().trimEnd()}`)
-          );
-        }
-      }
+      // Force a single fresh keyframe right after FFmpeg comes up so it
+      // locks decoding immediately. We deliberately do *not* PLI on a
+      // short interval — each PLI causes the camera to reset its encoder
+      // and drop intermediate frames, which shows up as the playback
+      // clock jumping forward in chunks.
+      setTimeout(() => forwarder?.requestKeyframe?.(), 200);
 
       // Reconnect on unexpected video FFmpeg exit
       videoFfmpeg.once("close", async (code) => {
