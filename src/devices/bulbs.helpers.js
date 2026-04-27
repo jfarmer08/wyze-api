@@ -5,6 +5,38 @@ const { propertyIds: PIDs } = require("../types");
  * with .mac and .product_model instead of raw (mac, model) params.
  */
 module.exports = {
+  /**
+   * Try a local LAN command first, fall back to cloud on failure.
+   * Device must include `enr` and `device_params.ip` (from getDeviceList).
+   */
+  async bulbLocalOrCloud(device, propertyId, propertyValue, actionKey) {
+    const enr = device?.enr;
+    const ip = device?.device_params?.ip;
+    if (enr && ip) {
+      try {
+        return await this.localBulbCommand(
+          device.mac,
+          device.product_model,
+          enr,
+          ip,
+          propertyId,
+          propertyValue
+        );
+      } catch (err) {
+        if (this.apiLogEnabled) {
+          this.log.info(`Local bulb command failed, falling back to cloud: ${err.message}`);
+        }
+      }
+    }
+    return this.runActionList(
+      device.mac,
+      device.product_model,
+      propertyId,
+      propertyValue,
+      actionKey
+    );
+  },
+
   async bulbInfo(device) {
     return this.getBulbInfo(device.mac);
   },

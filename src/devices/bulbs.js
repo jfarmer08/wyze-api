@@ -134,39 +134,6 @@ module.exports = {
   },
 
   /**
-   * Try a local LAN command on a bulb first, fall back to a cloud action
-   * on failure. Device object must include `enr` and `device_params.ip`
-   * (both come from getDeviceList).
-   */
-  async bulbLocalOrCloud(device, propertyId, propertyValue, actionKey) {
-    const enr = device?.enr;
-    const ip = device?.device_params?.ip;
-    if (enr && ip) {
-      try {
-        return await this.localBulbCommand(
-          device.mac,
-          device.product_model,
-          enr,
-          ip,
-          propertyId,
-          propertyValue
-        );
-      } catch (err) {
-        if (this.apiLogEnabled) {
-          this.log.info(`Local bulb command failed, falling back to cloud: ${err.message}`);
-        }
-      }
-    }
-    return this.runActionList(
-      device.mac,
-      device.product_model,
-      propertyId,
-      propertyValue,
-      actionKey
-    );
-  },
-
-  /**
    * Set behavior on power restore. P1509 with `LightPowerLossRecoveryMode`.
    */
   async setBulbPowerLossRecovery(deviceMac, deviceModel, mode) {
