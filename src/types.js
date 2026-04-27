@@ -20,6 +20,16 @@ const propertyIds = Object.freeze({
   POWER_LOSS_RECOVERY: "P1509", // LightProps power_loss_recovery
   SUN_MATCH: "P1528",         // LightProps sun_match (mimic sunlight CCT)
   AWAY_MODE: "P1506",         // LightProps away_mode (light vacation mode)
+
+  // Light strip visual-effect / music-mode props (used by setBulbEffect).
+  LAMP_WITH_MUSIC_RHYTHM: "P1516",
+  LAMP_WITH_MUSIC_MODE: "P1522",      // LightVisualEffectModel id
+  LAMP_WITH_MUSIC_TYPE: "P1523",      // LightVisualEffectRunType id (optional)
+  LAMP_WITH_MUSIC_MUSIC: "P1524",     // sensitivity 0-100
+  LAMP_WITH_MUSIC_AUTO_COLOR: "P1525",
+  LAMP_WITH_MUSIC_COLOR: "P1526",     // HEX color palette (comma-separated)
+  MUSIC_MODE: "P1535",
+  LIGHT_STRIP_SPEED: "P1536",         // 1-10
 });
 
 // Documented value sets for the PIDs above. Use these instead of inline
@@ -163,6 +173,39 @@ const LightPowerLossRecoveryMode = Object.freeze({
   POWER_ON: 0,                  // turn the light on
   RESTORE_PREVIOUS_STATE: 1,    // maintain previous state
 });
+
+// Pre-set visual-effect models for light strips. Wire value is a string
+// (the id), not the enum key.
+const LightVisualEffectModel = Object.freeze({
+  GRADUAL_CHANGE: "1",   // "Shadow"
+  JUMP: "2",             // "Leap"
+  TWINKLE: "3",          // "Flicker"
+  MARQUEE: "4",
+  COLORFUL: "5",         // "Color Focus"
+  RUNNING_WATER: "6",    // "Water"
+  SEA_WAVE: "7",
+  METEOR: "8",           // "Shooting Star"
+  STARSHINE: "9",        // "Starlight"
+});
+
+// Direction modifier for animations that support a sweep direction
+// (MARQUEE, COLORFUL, RUNNING_WATER, SEA_WAVE, METEOR, STARSHINE).
+const LightVisualEffectRunType = Object.freeze({
+  DIRECTION_LEFT: "0",       // [ -> ]
+  DIRECTION_DISPERSIVE: "1", // [<-->]
+  DIRECTION_GATHERED: "2",   // [-><-]
+});
+
+// Which models accept a run-type direction. Models not listed here ignore
+// the run_type field on set_effect.
+const LightVisualEffectModelsWithDirection = Object.freeze([
+  LightVisualEffectModel.MARQUEE,
+  LightVisualEffectModel.COLORFUL,
+  LightVisualEffectModel.RUNNING_WATER,
+  LightVisualEffectModel.SEA_WAVE,
+  LightVisualEffectModel.METEOR,
+  LightVisualEffectModel.STARSHINE,
+]);
 
 // Wyze Lock (V1, YD.LO1) — code/description tables.
 // Codes are wire values (Wyze API integers); descriptions are the human
@@ -569,6 +612,9 @@ module.exports = {
   LockKeyPermissionType,
   LightControlMode,
   LightPowerLossRecoveryMode,
+  LightVisualEffectModel,
+  LightVisualEffectRunType,
+  LightVisualEffectModelsWithDirection,
   ThermostatSystemMode,
   ThermostatFanMode,
   ThermostatScenarioType,

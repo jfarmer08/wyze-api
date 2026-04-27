@@ -778,6 +778,41 @@ module.exports = class WyzeAPI {
     return result.data;
   }
 
+  /**
+   * Like `runActionList`, but accepts an array of `{pid, pvalue}` props in
+   * a single action — needed when one action must atomically set several
+   * properties (e.g. light-strip visual effects). Does NOT auto-push the
+   * on/off prop; caller controls the full plist.
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Array<{pid: string, pvalue: string|number|boolean}>} plist
+   * @param {string} actionKey
+   */
+  async runActionListMulti(deviceMac, deviceModel, plist, actionKey) {
+    const normalizedPlist = plist.map((p) => ({
+      pid: p.pid,
+      pvalue: typeof p.pvalue === "string" ? p.pvalue : String(p.pvalue),
+    }));
+    const data = {
+      action_list: [
+        {
+          instance_id: deviceMac,
+          action_params: {
+            list: [{ mac: deviceMac, plist: normalizedPlist }],
+          },
+          provider_key: deviceModel,
+          action_key: actionKey,
+        },
+      ],
+    };
+    if (this.apiLogEnabled) {
+      this.log.info(`runActionListMulti Request Data: ${JSON.stringify(data)}`);
+    }
+    const result = await this.request("app/v2/auto/run_action_list", data);
+    return result.data;
+  }
+
   async controlLock(deviceMac, deviceModel, action) {
     return this._fordPost("/openapi/lock/v1/control", {
       uuid: this.getUuid(deviceMac, deviceModel),
@@ -821,37 +856,10 @@ module.exports = class WyzeAPI {
   }
 
   async disableRemeAlarm(hms_id) {
-    await this.maybeLogin();
-    let config = {
-      headers: {
-        Authorization: this.access_token,
-        "User-Agent": this.userAgent,
-      },
-      data: {
-        hms_id: hms_id,
-        remediation_id: "emergency",
-      },
-    };
-    try {
-      const url = "https://hms.api.wyze.com/api/v1/reme-alarm";
-      if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
-      const result = await axios.delete(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response DisableRemeAlarm: ${JSON.stringify(result.data)}`
-        );
-      }
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-      if (e.response && this.apiLogEnabled) {
-        this.log.error(
-          `Response DisableRemeAlarm (${e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    return this._hmsRequest("delete", "https://hms.api.wyze.com/api/v1/reme-alarm", {
+      body: { hms_id, remediation_id: "emergency" },
+      label: "DisableRemeAlarm",
+    });
   }
 
   async getPlanBindingListByUser() {
@@ -864,100 +872,25 @@ module.exports = class WyzeAPI {
   }
 
   async monitoringProfileStateStatus(hms_id) {
-    await this.maybeLogin();
-    let query = payloadFactory.oliveCreateHmsGetPayload(hms_id);
-    let signature = crypto.oliveCreateSignature(query, this.access_token);
-    let config = {
-      headers: {
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-        Authorization: this.access_token,
-        "Content-Type": "application/json",
-      },
-      params: query,
-    };
-
-    try {
-      const url =
-        "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status";
-      if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response MonitoringProfileStateStatus: ${JSON.stringify(
-            result.data
-          )}`
-        );
-      }
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response MonitoringProfileStateStatus (${e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    const params = payloadFactory.oliveCreateHmsGetPayload(hms_id);
+    return this._hmsRequest(
+      "get",
+      "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status",
+      { params, sign: true, contentType: true, label: "MonitoringProfileStateStatus" }
+    );
   }
 
   async monitoringProfileActive(hms_id, home, away) {
-    await this.maybeLogin();
-    const payload = payloadFactory.oliveCreateHmsPatchPayload(hms_id);
-    const signature = crypto.oliveCreateSignature(payload, this.access_token);
-
-    const config = {
-      headers: {
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: constants.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-        Authorization: this.access_token,
-      },
-      params: payload,
-    };
-
-    const data = [
-      {
-        state: "home",
-        active: home,
-      },
-      {
-        state: "away",
-        active: away,
-      },
+    const params = payloadFactory.oliveCreateHmsPatchPayload(hms_id);
+    const body = [
+      { state: "home", active: home },
+      { state: "away", active: away },
     ];
-
-    try {
-      const url =
-        "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active";
-      if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
-      const result = await axios.patch(url, data, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response MonitoringProfileActive: ${JSON.stringify(result.data)}`
-        );
-      }
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response MonitoringProfileActive (${e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    return this._hmsRequest(
+      "patch",
+      "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active",
+      { params, body, sign: true, label: "MonitoringProfileActive" }
+    );
   }
 
   // Generic olive-signed primitives. Many Wyze plugin services (earth,
@@ -1037,6 +970,73 @@ module.exports = class WyzeAPI {
       if (e.response) {
         this.log.error(
           `Response ${label || "Olive POST"} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * HMS service request. Three shapes are needed across the family:
+   *   - DELETE with body, no signing (Authorization header only) — disableRemeAlarm
+   *   - GET with olive signing + Authorization header — monitoringProfileStateStatus
+   *   - PATCH with olive signing + body — monitoringProfileActive
+   *
+   * @param {string} method — http verb
+   * @param {string} url — full URL
+   * @param {Object} options
+   * @param {Object} [options.params]   — query params (also signed if `sign:true`)
+   * @param {Object|Array} [options.body] — request body
+   * @param {boolean} [options.sign=false] — apply olive signature2 + olive headers
+   * @param {boolean} [options.contentType=false] — add Content-Type: application/json
+   * @param {string} [options.label] — log label
+   */
+  async _hmsRequest(method, url, options = {}) {
+    await this.maybeLogin();
+    const { params, body, sign = false, contentType = false, label } = options;
+
+    const headers = {
+      Authorization: this.access_token,
+      "User-Agent": this.userAgent,
+    };
+    if (sign) {
+      const signature = crypto.oliveCreateSignature(params, this.access_token);
+      Object.assign(headers, {
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      });
+    }
+    if (contentType) headers["Content-Type"] = "application/json";
+
+    const config = { headers };
+    if (params) config.params = params;
+    if (body !== undefined && method.toLowerCase() === "delete") {
+      // axios.delete takes body via config.data
+      config.data = body;
+    }
+
+    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    try {
+      let result;
+      const m = method.toLowerCase();
+      if (m === "get") result = await axios.get(url, config);
+      else if (m === "delete") result = await axios.delete(url, config);
+      else if (m === "patch") result = await axios.patch(url, body, config);
+      else if (m === "post") result = await axios.post(url, body, config);
+      else throw new Error(`_hmsRequest: unsupported method ${method}`);
+
+      if (this.apiLogEnabled) {
+        this.log.info(`API response ${label || "HMS"}: ${JSON.stringify(result.data)}`);
+      }
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e.message}`);
+      if (e.response) {
+        this.log.error(
+          `Response ${label || "HMS"} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
         );
       }
       throw e;
@@ -1299,271 +1299,71 @@ module.exports = class WyzeAPI {
   }
 
     // Construct the characteristics object
+  // Irrigation / sprinkler — all olive-signed against the lockwood service.
+  // These were six near-identical inline blocks; consolidated through the
+  // shared olive primitives. Wire format unchanged.
+
   async irrigationGetIotProp(deviceMac) {
-    await this.maybeLogin();
-    let keys =
+    const payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
+    payload.keys =
       "zone_state,iot_state,iot_state_update_time,app_version,RSSI,wifi_mac,sn,device_model,ssid,IP";
-    let payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
-    payload.keys = keys;
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-    try {
-      const url = `${constants.irrigationBaseUrl}get_iot_prop`;
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log(
-          `API response IrrigationGetIotProp: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response IrrigationGetIotProp (${
-            e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    return this._oliveSignedGet(
+      `${constants.irrigationBaseUrl}get_iot_prop`,
+      payload,
+      "IrrigationGetIotProp"
+    );
   }
 
   async irrigationGetDeviceInfo(deviceMac) {
-    await this.maybeLogin();
-    let keys =
+    const payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
+    payload.keys =
       "wiring,sensor,enable_schedules,notification_enable,notification_watering_begins,notification_watering_ends,notification_watering_is_skipped,skip_low_temp,skip_wind,skip_rain,skip_saturation";
-    let payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
-    payload.keys = keys;
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-    try {
-      const url = `${constants.irrigationBaseUrl}device_info`;
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log(
-          `API response IrrigationGetDeviceInfo: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response IrrigationGetDeviceInfo (${
-            e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    return this._oliveSignedGet(
+      `${constants.irrigationBaseUrl}device_info`,
+      payload,
+      "IrrigationGetDeviceInfo"
+    );
   }
 
   async irrigationGetZones(deviceMac) {
-    await this.maybeLogin();
-    let payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-    try {
-      const url = `${constants.irrigationBaseUrl}zone`;
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log(
-          `API response IrrigationGetZones: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response IrrigationGetZones (${
-            e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    const payload = payloadFactory.oliveCreateGetPayloadIrrigation(deviceMac);
+    return this._oliveSignedGet(
+      `${constants.irrigationBaseUrl}zone`,
+      payload,
+      "IrrigationGetZones"
+    );
   }
 
   async irrigationQuickRun(deviceMac, zoneNumber, duration) {
-    await this.maybeLogin();
-    let payload = payloadFactory.oliveCreatePostPayloadIrrigationQuickRun(
+    const payload = payloadFactory.oliveCreatePostPayloadIrrigationQuickRun(
       deviceMac,
       zoneNumber,
       duration
     );
-    let signature = crypto.oliveCreateSignatureSingle(
-      JSON.stringify(payload),
-      this.access_token
+    return this._oliveSignedPost(
+      `${constants.irrigationBaseUrl}quickrun`,
+      payload,
+      "IrrigationQuickRun"
     );
-    const config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "Content-Type": "application/json",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-    };
-
-    try {
-      const url = `${constants.irrigationBaseUrl}quickrun`;
-      const result = await axios.post(url, JSON.stringify(payload), config);
-      if (this.apiLogEnabled) {
-        this.log(
-          `API response IrrigationQuickRun: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response IrrigationQuickRun (${
-            e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
   }
 
   async irrigationStop(deviceMac) {
-    await this.maybeLogin();
-    let payload = payloadFactory.oliveCreatePostPayloadIrrigationStop(
-      deviceMac,
-      "STOP"
+    const payload = payloadFactory.oliveCreatePostPayloadIrrigationStop(deviceMac, "STOP");
+    return this._oliveSignedPost(
+      `${constants.irrigationBaseUrl}runningschedule`,
+      payload,
+      "IrrigationStop"
     );
-    let signature = crypto.oliveCreateSignatureSingle(
-      JSON.stringify(payload),
-      this.access_token
-    );
-    const config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "Content-Type": "application/json",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-    };
-
-    try {
-      const url = `${constants.irrigationBaseUrl}runningschedule`;
-      const result = await axios.post(url, JSON.stringify(payload), config);
-      if (this.apiLogEnabled) {
-        this.log(`API response IrrigationStop: ${JSON.stringify(result.data)}`);
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response IrrigationStop (${
-            e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
   }
 
   async irrigationGetScheduleRuns(deviceMac, limit = 2) {
-    await this.maybeLogin();
-    let payload =
-      payloadFactory.oliveCreateGetPayloadIrrigationScheduleRuns(deviceMac);
+    const payload = payloadFactory.oliveCreateGetPayloadIrrigationScheduleRuns(deviceMac);
     payload.limit = limit;
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-    try {
-      const url = `${constants.irrigationBaseUrl}schedule_runs`;
-      if (this.apiLogEnabled) this.log(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log(
-          `API response IrrigationGetScheduleRuns: ${JSON.stringify(
-            result.data
-          )}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response IrrigationGetScheduleRuns (${
-            e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    return this._oliveSignedGet(
+      `${constants.irrigationBaseUrl}schedule_runs`,
+      payload,
+      "IrrigationGetScheduleRuns"
+    );
   }
 
   /**
@@ -3811,6 +3611,84 @@ module.exports = class WyzeAPI {
   }
 
   /**
+   * Build the prop-list payload for a light-strip visual effect.
+   *
+   * @param {Object} options
+   * @param {string} options.model — `WyzeAPI.LightVisualEffectModel.*` value (id string)
+   * @param {string} [options.runType] — `WyzeAPI.LightVisualEffectRunType.*` (only honored for direction-supporting models)
+   * @param {boolean} [options.musicMode=false]
+   * @param {number}  [options.speed=8] — 1-10
+   * @param {number}  [options.sensitivity=100] — 0-100
+   * @param {boolean} [options.autoColor=false]
+   * @param {string}  [options.colorPalette="2961AF,B5267A,91FF6A"] — comma-separated HEX values
+   * @param {string}  [options.rhythm="0"]
+   * @returns {Array<{pid: string, pvalue: string}>}
+   */
+  buildLightVisualEffect(options) {
+    const { model } = options;
+    if (!Object.values(types.LightVisualEffectModel).includes(model)) {
+      throw new Error(
+        `buildLightVisualEffect: invalid model ${JSON.stringify(model)}`
+      );
+    }
+    const runType = options.runType ?? null;
+    if (runType !== null && !Object.values(types.LightVisualEffectRunType).includes(runType)) {
+      throw new Error(
+        `buildLightVisualEffect: invalid runType ${JSON.stringify(runType)}`
+      );
+    }
+
+    const speed = options.speed ?? 8;
+    if (!Number.isInteger(speed) || speed < 1 || speed > 10) {
+      throw new Error("buildLightVisualEffect: speed must be an integer 1-10");
+    }
+    const sensitivity = options.sensitivity ?? 100;
+    if (!Number.isInteger(sensitivity) || sensitivity < 0 || sensitivity > 100) {
+      throw new Error("buildLightVisualEffect: sensitivity must be 0-100");
+    }
+
+    const plist = [
+      { pid: PIDs.LAMP_WITH_MUSIC_MODE, pvalue: model },
+      { pid: PIDs.MUSIC_MODE, pvalue: options.musicMode ? "1" : "0" },
+      { pid: PIDs.LIGHT_STRIP_SPEED, pvalue: String(speed) },
+      { pid: PIDs.LAMP_WITH_MUSIC_MUSIC, pvalue: String(sensitivity) },
+      { pid: PIDs.LAMP_WITH_MUSIC_RHYTHM, pvalue: options.rhythm ?? "0" },
+      { pid: PIDs.LAMP_WITH_MUSIC_AUTO_COLOR, pvalue: options.autoColor ? "1" : "0" },
+      { pid: PIDs.LAMP_WITH_MUSIC_COLOR, pvalue: options.colorPalette ?? "2961AF,B5267A,91FF6A" },
+    ];
+    if (
+      runType !== null &&
+      types.LightVisualEffectModelsWithDirection.includes(model)
+    ) {
+      plist.push({ pid: PIDs.LAMP_WITH_MUSIC_TYPE, pvalue: runType });
+    }
+    return plist;
+  }
+
+  /**
+   * Set a visual / scene effect on a light strip. Only valid for light-strip
+   * models (`HL_LSL`, `HL_LSLP`). Sends the effect plist plus a flip of
+   * P1508 to FRAGMENTED so the strip enters scene mode.
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} effectOptions — see `buildLightVisualEffect()`
+   */
+  async setBulbEffect(deviceMac, deviceModel, effectOptions) {
+    if (!types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+      throw new Error(
+        `setBulbEffect: ${deviceModel} is not a light strip`
+      );
+    }
+    const plist = this.buildLightVisualEffect(effectOptions);
+    plist.push({
+      pid: PIDs.CONTROL_LIGHT,
+      pvalue: String(types.LightControlMode.FRAGMENTED),
+    });
+    return this.runActionListMulti(deviceMac, deviceModel, plist, "set_mesh_property");
+  }
+
+  /**
    * Set a HEX color on a mesh bulb / color light strip. Writes the HEX to
    * P1507 and, for light strips, also flips the control mode to COLOR via
    * P1508 so the strip switches into solid-color mode.
@@ -3896,6 +3774,10 @@ module.exports = class WyzeAPI {
 
   async bulbAwayModeOff(device) {
     return this.setBulbAwayModeOff(device.mac, device.product_model);
+  }
+
+  async bulbEffect(device, effectOptions) {
+    return this.setBulbEffect(device.mac, device.product_model, effectOptions);
   }
 
   /**
@@ -4414,6 +4296,9 @@ module.exports.LockKeyOperationStage = types.LockKeyOperationStage;
 module.exports.LockKeyPermissionType = types.LockKeyPermissionType;
 module.exports.LightControlMode = types.LightControlMode;
 module.exports.LightPowerLossRecoveryMode = types.LightPowerLossRecoveryMode;
+module.exports.LightVisualEffectModel = types.LightVisualEffectModel;
+module.exports.LightVisualEffectRunType = types.LightVisualEffectRunType;
+module.exports.LightVisualEffectModelsWithDirection = types.LightVisualEffectModelsWithDirection;
 module.exports.ThermostatSystemMode = types.ThermostatSystemMode;
 module.exports.ThermostatFanMode = types.ThermostatFanMode;
 module.exports.ThermostatScenarioType = types.ThermostatScenarioType;
