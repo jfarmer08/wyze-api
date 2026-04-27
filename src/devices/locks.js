@@ -27,18 +27,6 @@ module.exports = {
     });
   },
 
-  async unlockLock(device) {
-    return this.controlLock(device.mac, device.product_model, "remoteUnlock");
-  },
-
-  async lockLock(device) {
-    return this.controlLock(device.mac, device.product_model, "remoteLock");
-  },
-
-  async lockInfo(device) {
-    return this.getLockInfo(device.mac, device.product_model);
-  },
-
   async getLockDeviceList() {
     const devices = await this.getDeviceList();
     return devices.filter((d) => DeviceModels.LOCK.includes(d.product_model));
@@ -285,28 +273,6 @@ module.exports = {
     return result;
   },
 
-  // ---- Device-object helpers -----------------------------------------------
-
-  async lockKeypad(device) {
-    return this.getLockKeypadInfo(device.mac, device.product_model);
-  },
-
-  async lockGateway(device) {
-    return this.getLockGatewayInfo(device.mac, device.product_model);
-  },
-
-  async lockRecords(device, options = {}) {
-    return this.getLockRecords(device.mac, device.product_model, options);
-  },
-
-  async lockKeys(device) {
-    return this.getLockKeys(device.mac, device.product_model);
-  },
-
-  async lockFullInfo(device) {
-    return this.getLockFullInfo(device.mac);
-  },
-
   // ---- IoT3 (Bolt V2 + Palm) -----------------------------------------------
 
   async iot3GetProperties(deviceMac, deviceModel, props) {
@@ -347,20 +313,6 @@ module.exports = {
 
   async lockBoltV2Unlock(deviceMac, deviceModel) {
     return this.iot3RunAction(deviceMac, deviceModel, "lock::unlock");
-  },
-
-  // Device-object helpers for BoltV2 (accept a `device` with .mac + .product_model)
-
-  async lockBoltV2Properties(device) {
-    return this.lockBoltV2GetProperties(device.mac, device.product_model);
-  },
-
-  async lockBoltV2LockDevice(device) {
-    return this.lockBoltV2Lock(device.mac, device.product_model);
-  },
-
-  async lockBoltV2UnlockDevice(device) {
-    return this.lockBoltV2Unlock(device.mac, device.product_model);
   },
 
   async palmLockGetProperties(deviceMac, deviceModel) {

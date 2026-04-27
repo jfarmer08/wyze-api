@@ -1024,15 +1024,25 @@ Object.assign(
   require("./services/iot3"),
   require("./services/devicemgmt"),
   require("./devices/vacuum"),
+  require("./devices/vacuum.helpers"),
   require("./devices/sensors"),
+  require("./devices/sensors.helpers"),
   require("./devices/irrigation"),
+  require("./devices/irrigation.helpers"),
   require("./devices/hms"),
+  require("./devices/hms.helpers"),
   require("./devices/thermostat"),
+  require("./devices/thermostat.helpers"),
   require("./devices/plugs"),
+  require("./devices/plugs.helpers"),
   require("./devices/switches"),
+  require("./devices/switches.helpers"),
   require("./devices/bulbs"),
+  require("./devices/bulbs.helpers"),
   require("./devices/locks"),
-  require("./devices/cameras")
+  require("./devices/locks.helpers"),
+  require("./devices/cameras"),
+  require("./devices/cameras.helpers")
 );
 
 // Preserve previously-static thermostat key getters as class statics.
@@ -1106,3 +1116,4 @@ module.exports.IrrigationExposureType = types.IrrigationExposureType;
 module.exports.IrrigationNozzleType = types.IrrigationNozzleType;
 module.exports.IrrigationSlopeType = types.IrrigationSlopeType;
 module.exports.IrrigationSoilType = types.IrrigationSoilType;
+module.exports.propertyIds = types.propertyIds;

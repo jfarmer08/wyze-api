@@ -133,14 +133,6 @@ module.exports = {
     );
   },
 
-  async bulbMusicModeOn(device) {
-    return this.setBulbMusicMode(device.mac, device.product_model, true);
-  },
-
-  async bulbMusicModeOff(device) {
-    return this.setBulbMusicMode(device.mac, device.product_model, false);
-  },
-
   /**
    * Try a local LAN command on a bulb first, fall back to a cloud action
    * on failure. Device object must include `enr` and `device_params.ip`
@@ -370,50 +362,4 @@ module.exports = {
     await this.runActionList(deviceMac, deviceModel, PIDs.COLOR, value, "set_mesh_property");
   },
 
-  // ---- Device-object helpers (homebridge-style) ----------------------------
-
-  async bulbInfo(device) {
-    return this.getBulbInfo(device.mac);
-  },
-
-  async bulbSunMatch(device, enabled) {
-    return this.setBulbSunMatch(device.mac, device.product_model, enabled);
-  },
-
-  async bulbSunMatchOn(device) {
-    return this.setBulbSunMatch(device.mac, device.product_model, true);
-  },
-
-  async bulbSunMatchOff(device) {
-    return this.setBulbSunMatch(device.mac, device.product_model, false);
-  },
-
-  async bulbPowerLossRecovery(device, mode) {
-    return this.setBulbPowerLossRecovery(device.mac, device.product_model, mode);
-  },
-
-  async bulbColor(device, hex) {
-    return this.setBulbColor(device.mac, device.product_model, hex);
-  },
-
-  async bulbColorTemperature(device, value) {
-    return this.setBulbColorTemperature(device.mac, device.product_model, value);
-  },
-
-  async bulbAwayModeOff(device) {
-    return this.setBulbAwayModeOff(device.mac, device.product_model);
-  },
-
-  async bulbEffect(device, effectOptions) {
-    return this.setBulbEffect(device.mac, device.product_model, effectOptions);
-  },
-
-  // turnMeshOn/Off — older aliases of lightMeshOn/Off, kept for back-compat.
-  async turnMeshOn(deviceMac, deviceModel) {
-    return this.runActionList(deviceMac, deviceModel, PIDs.ON, "1", "set_mesh_property");
-  },
-
-  async turnMeshOff(deviceMac, deviceModel) {
-    return this.runActionList(deviceMac, deviceModel, PIDs.ON, "0", "set_mesh_property");
-  },
 };
