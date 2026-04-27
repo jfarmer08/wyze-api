@@ -3985,27 +3985,77 @@ module.exports = class WyzeAPI {
   }
 
   /**
-   * Set a HEX color on a mesh bulb / color light strip. Writes the HEX to
-   * P1507 and, for light strips, also flips the control mode to COLOR via
-   * P1508 so the strip switches into solid-color mode.
+   * Set a color on a mesh bulb / color light strip.
    *
-   * For Light Strip Pro per-subsection colors (16 sections), use the more
-   * specific composite call (deferred — needs P1518 subsection wire format).
+   * - Mesh color bulb (`WLPA19C`): writes P1507.
+   * - Light Strip (`HL_LSL`): writes P1507 + flips P1508 → COLOR.
+   * - Light Strip Pro (`HL_LSLP`):
+   *   - `hex` is a string → replicates to all 16 subsections (P1515) + flips P1508.
+   *   - `hex` is an array of 16 strings → uses each per-subsection color.
+   *
+   * Pro uses P1515 (subsection map) and skips P1507 — matching what the
+   * official client sends.
    *
    * @param {string} deviceMac
    * @param {string} deviceModel
-   * @param {string} hex — e.g. `"FF5733"` (case-insensitive, no `#`)
+   * @param {string|string[]} hex — `"FF5733"` or array of 16 HEX strings
    */
   async setBulbColor(deviceMac, deviceModel, hex) {
-    if (typeof hex !== "string" || !/^[0-9a-fA-F]{6}$/.test(hex)) {
-      throw new Error(`setBulbColor: ${JSON.stringify(hex)} is not a 6-char HEX color`);
-    }
     if (!types.DeviceModels.MESH_BULB.includes(deviceModel)) {
       throw new Error(`setBulbColor: ${deviceModel} does not support color`);
     }
+    const isPro = types.DeviceModels.LIGHT_STRIP_PRO.includes(deviceModel);
+    const isStrip = types.DeviceModels.LIGHT_STRIP.includes(deviceModel);
+
+    const validateHex = (v) => {
+      if (typeof v !== "string" || !/^[0-9a-fA-F]{6}$/.test(v)) {
+        throw new Error(`setBulbColor: ${JSON.stringify(v)} is not a 6-char HEX color`);
+      }
+    };
+
+    if (Array.isArray(hex)) {
+      if (!isPro) {
+        throw new Error(
+          "setBulbColor: per-subsection color arrays are only supported on Light Strip Pro"
+        );
+      }
+      if (hex.length !== 16) {
+        throw new Error("setBulbColor: Light Strip Pro requires exactly 16 colors");
+      }
+      hex.forEach(validateHex);
+      const colors = hex.map((c) => c.toUpperCase());
+      const subsectionValue = "00" + colors.join("#00");
+      return this.runActionListMulti(
+        deviceMac,
+        deviceModel,
+        [
+          { pid: PIDs.LIGHTSTRIP_PRO_SUBSECTION, pvalue: subsectionValue },
+          { pid: PIDs.CONTROL_LIGHT, pvalue: String(types.LightControlMode.COLOR) },
+        ],
+        "set_mesh_property"
+      );
+    }
+
+    validateHex(hex);
     const color = hex.toUpperCase();
+
+    if (isPro) {
+      // Replicate single color across all 16 subsections.
+      const subsectionValue = "00" + Array(16).fill(color).join("#00");
+      return this.runActionListMulti(
+        deviceMac,
+        deviceModel,
+        [
+          { pid: PIDs.LIGHTSTRIP_PRO_SUBSECTION, pvalue: subsectionValue },
+          { pid: PIDs.CONTROL_LIGHT, pvalue: String(types.LightControlMode.COLOR) },
+        ],
+        "set_mesh_property"
+      );
+    }
+
+    // Mesh color bulb or non-Pro light strip: P1507 + (for strips) control mode.
     await this.runActionList(deviceMac, deviceModel, PIDs.COLOR, color, "set_mesh_property");
-    if (types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+    if (isStrip) {
       await this.runActionList(
         deviceMac,
         deviceModel,

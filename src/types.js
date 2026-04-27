@@ -29,6 +29,7 @@ const propertyIds = Object.freeze({
   WCO_MOTION_DETECTION: "P1029",   // Wyze Cam Outdoor (WVOD1 / HL_WCO2) only
 
   // Light strip visual-effect / music-mode props (used by setBulbEffect).
+  LIGHTSTRIP_PRO_SUBSECTION: "P1515", // 16-color subsection map (Light Strip Pro)
   LAMP_WITH_MUSIC_RHYTHM: "P1516",
   LAMP_WITH_MUSIC_MODE: "P1522",      // LightVisualEffectModel id
   LAMP_WITH_MUSIC_TYPE: "P1523",      // LightVisualEffectRunType id (optional)

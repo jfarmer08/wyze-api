@@ -375,6 +375,90 @@ test("HMSStatus / HVACState / DeviceMgmtToggleProps / Irrigation* exposed on Wyz
   assert.strictEqual(WyzeAPI.IrrigationExposureType.LOTS_OF_SUN, "lots_of_sun");
 });
 
+// --- Light Strip Pro per-subsection colors --------------------------------
+
+test("setBulbColor on Light Strip Pro with single HEX replicates to all 16 subsections", async () => {
+  const w = stub();
+  let captured;
+  w.runActionListMulti = async (mac, model, plist, actionKey) => {
+    captured = { plist, actionKey };
+  };
+
+  await w.setBulbColor("M", "HL_LSLP", "ff0000");
+  assert.strictEqual(captured.actionKey, "set_mesh_property");
+  assert.strictEqual(captured.plist[0].pid, "P1515");
+  assert.strictEqual(captured.plist[1].pid, "P1508");
+
+  // Subsection format: "00" + "FF0000#00FF0000#00..." (16 colors joined by "#00")
+  const expected = "00" + Array(16).fill("FF0000").join("#00");
+  assert.strictEqual(captured.plist[0].pvalue, expected);
+  assert.strictEqual(captured.plist[1].pvalue, "1"); // LightControlMode.COLOR
+});
+
+test("setBulbColor on Light Strip Pro with array of 16 HEX uses per-subsection colors", async () => {
+  const w = stub();
+  let captured;
+  w.runActionListMulti = async (mac, model, plist) => {
+    captured = plist;
+  };
+
+  const colors = Array.from({ length: 16 }, (_, i) =>
+    i.toString(16).padStart(2, "0").toUpperCase().repeat(3)
+  );
+  await w.setBulbColor("M", "HL_LSLP", colors);
+  const expected = "00" + colors.join("#00");
+  assert.strictEqual(captured[0].pid, "P1515");
+  assert.strictEqual(captured[0].pvalue, expected);
+});
+
+test("setBulbColor rejects array input on non-Pro models and wrong-length arrays on Pro", async () => {
+  const w = stub();
+  w.runActionListMulti = async () => {};
+  w.runActionList = async () => {};
+
+  await assert.rejects(
+    () => w.setBulbColor("M", "WLPA19C", ["FF0000", "00FF00"]),
+    /only supported on Light Strip Pro/
+  );
+  await assert.rejects(
+    () => w.setBulbColor("M", "HL_LSL", Array(16).fill("FF0000")),
+    /only supported on Light Strip Pro/
+  );
+  await assert.rejects(
+    () => w.setBulbColor("M", "HL_LSLP", ["FF0000"]),
+    /exactly 16 colors/
+  );
+  await assert.rejects(
+    () => w.setBulbColor("M", "HL_LSLP", [...Array(15).fill("FF0000"), "bad"]),
+    /not a 6-char HEX/
+  );
+});
+
+test("setBulbColor on non-Pro light strip still uses sequential P1507 + P1508 (unchanged)", async () => {
+  const w = stub();
+  const calls = [];
+  w.runActionList = async (mac, model, pid, value) => {
+    calls.push({ pid, value });
+  };
+
+  await w.setBulbColor("M", "HL_LSL", "00ff00");
+  assert.deepStrictEqual(calls, [
+    { pid: "P1507", value: "00FF00" },
+    { pid: "P1508", value: 1 },
+  ]);
+});
+
+test("setBulbColor on plain mesh color bulb (WLPA19C) writes only P1507", async () => {
+  const w = stub();
+  const calls = [];
+  w.runActionList = async (mac, model, pid, value) => {
+    calls.push({ pid, value });
+  };
+
+  await w.setBulbColor("M", "WLPA19C", "ABCDEF");
+  assert.deepStrictEqual(calls, [{ pid: "P1507", value: "ABCDEF" }]);
+});
+
 test("DeviceModels includes the new camera categories", () => {
   const types = require("../src/types");
   assert.deepStrictEqual(types.DeviceModels.CAMERA_DEVICEMGMT, ["LD_CFP", "AN_RSCW", "GW_GC1"]);
