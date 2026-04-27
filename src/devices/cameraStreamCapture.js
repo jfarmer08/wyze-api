@@ -269,4 +269,105 @@ async function captureStreamFrame({
   }
 }
 
-module.exports = { captureStreamFrame };
+/**
+ * Establish a long-lived WebRTC connection to a Wyze camera and forward every
+ * incoming H.264 RTP packet to `localRtpPort` on 127.0.0.1 via UDP.
+ *
+ * Returns a `{ stop() }` handle. Call `stop()` to close the WebRTC peer and
+ * the forwarding socket.
+ *
+ * @param {Object} params
+ * @param {string} params.signalingUrl
+ * @param {Array}  params.iceServers
+ * @param {number} params.localRtpPort — UDP port FFmpeg is listening on
+ * @param {Object} [params.logger]
+ * @param {number} [params.timeoutMs=15000] — signaling negotiation timeout
+ * @returns {Promise<{stop:Function}>}
+ */
+async function startRtpForwarding({
+  signalingUrl,
+  iceServers,
+  localRtpPort,
+  logger = null,
+  timeoutMs = 15_000,
+}) {
+  const log = (level, msg) => {
+    if (!logger) return;
+    if (typeof logger[level] === "function") logger[level](`[stream] ${msg}`);
+  };
+
+  const fwdSock = dgram.createSocket("udp4");
+  fwdSock.bind(0, "127.0.0.1");
+
+  const pc = new RTCPeerConnection({ iceServers, codecs: { video: H264_CODECS } });
+  pc.addTransceiver("video", { direction: "recvonly" });
+
+  pc.onTrack.subscribe((track) => {
+    log("debug", `forwarding track kind=${track.kind}`);
+    track.onReceiveRtp.subscribe((rtp) => {
+      try {
+        fwdSock.send(rtp.serialize(), localRtpPort, "127.0.0.1");
+      } catch (_) {}
+    });
+  });
+
+  const ws = new WebSocket(signalingUrl);
+
+  const negotiated = new Promise((resolve, reject) => {
+    const onMsg = async (raw) => {
+      const msg = _parseSignalMessage(raw.toString());
+      if (!msg) return;
+      try {
+        if (msg.type === "SDP_ANSWER") {
+          await pc.setRemoteDescription(msg.payload);
+          log("debug", "applied SDP_ANSWER");
+          resolve();
+        } else if (msg.type === "ICE_CANDIDATE") {
+          await pc.addIceCandidate(msg.payload);
+        }
+      } catch (err) {
+        reject(err);
+      }
+    };
+    ws.on("message", onMsg);
+    ws.once("error", reject);
+    ws.once("close", (code) => {
+      if (code !== 1000) reject(new Error(`signaling WS closed unexpectedly (${code})`));
+    });
+  });
+
+  const timeout = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error(`stream negotiation timed out after ${timeoutMs}ms`)), timeoutMs)
+  );
+
+  await Promise.race([
+    new Promise((resolve, reject) => {
+      ws.once("open", resolve);
+      ws.once("error", reject);
+    }),
+    timeout,
+  ]);
+
+  log("debug", "signaling open, sending offer");
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  _sendSignal(ws, "SDP_OFFER", { type: "offer", sdp: pc.localDescription.sdp });
+
+  pc.onIceCandidate.subscribe((c) => {
+    if (c?.candidate) _sendSignal(ws, "ICE_CANDIDATE", c);
+  });
+
+  await Promise.race([negotiated, timeout]);
+  log("debug", "WebRTC negotiation complete — forwarding RTP");
+
+  const stop = () => {
+    log("debug", "stopping RTP forwarding");
+    try { ws.close(); } catch (_) {}
+    try { pc.close(); } catch (_) {}
+    try { fwdSock.close(); } catch (_) {}
+  };
+
+  return { stop };
+}
+
+module.exports = { captureStreamFrame, startRtpForwarding };

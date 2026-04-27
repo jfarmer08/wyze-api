@@ -1,4 +1,5 @@
 const nodeCrypto = require("crypto");
+const { startRtpForwarding } = require("./cameraStreamCapture");
 const {
   propertyIds: PIDs,
   propertyValues: PVals,
@@ -276,6 +277,26 @@ module.exports = {
   async getCameraSummaries() {
     const cameras = await this.getCameras();
     return cameras.map((device) => this.cameraToSummary(device));
+  },
+
+  // ---- Long-lived RTP forwarding (for HomeKit streaming) -------------------
+
+  /**
+   * Establish a WebRTC connection to the camera and continuously forward
+   * incoming H.264 RTP packets to `localRtpPort` on 127.0.0.1.
+   * Returns `{ stop() }` — call stop() when the stream ends.
+   */
+  async cameraStartRtpForwarding(deviceMac, deviceModel, localRtpPort, options = {}) {
+    const conn = await this.getCameraWebRTCConnectionInfo(deviceMac, deviceModel, {
+      ...options,
+      noCache: true,
+    });
+    return startRtpForwarding({
+      signalingUrl: conn.signalingUrl,
+      iceServers: conn.iceServers,
+      localRtpPort,
+      logger: this.apiLogEnabled ? this.log : null,
+    });
   },
 
   // ---- Stream utility functions ---------------------------------------------
