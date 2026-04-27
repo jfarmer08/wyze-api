@@ -349,6 +349,20 @@ module.exports = {
     return this.iot3RunAction(deviceMac, deviceModel, "lock::unlock");
   },
 
+  // Device-object helpers for BoltV2 (accept a `device` with .mac + .product_model)
+
+  async lockBoltV2Properties(device) {
+    return this.lockBoltV2GetProperties(device.mac, device.product_model);
+  },
+
+  async lockBoltV2LockDevice(device) {
+    return this.lockBoltV2Lock(device.mac, device.product_model);
+  },
+
+  async lockBoltV2UnlockDevice(device) {
+    return this.lockBoltV2Unlock(device.mac, device.product_model);
+  },
+
   async palmLockGetProperties(deviceMac, deviceModel) {
     return this.iot3GetProperties(deviceMac, deviceModel, [
       "lock::lock-status",

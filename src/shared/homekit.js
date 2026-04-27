@@ -146,6 +146,98 @@ module.exports = {
     return `${toHex(r)}${toHex(g)}${toHex(b)}`;
   },
 
+  // ---- Leak sensor --------------------------------------------------------
+
+  /**
+   * Wyze `ws_detect_state` → HomeKit LeakDetected characteristic.
+   * Values ≥ 2 indicate a leak (LEAK_DETECTED = 1); 0 or 1 = NO_LEAK (0).
+   */
+  wyzeLeakStateToHomeKit(state) {
+    return state >= 2 ? 1 : 0;
+  },
+
+  // ---- Temperature --------------------------------------------------------
+
+  /**
+   * Wyze temperature (°F, as reported by th_sensor_temperature) → HomeKit °C.
+   * HomeKit always uses Celsius for the CurrentTemperature characteristic.
+   */
+  wyzeTemperatureToHomeKit(fahrenheit) {
+    return Math.round(((fahrenheit - 32) / 1.8) * 10) / 10;
+  },
+
+  // ---- Battery / brightness validators -----------------------------------
+
+  /**
+   * Clamp battery to 100 max; null/undefined → 1.
+   */
+  checkBatteryVoltage(value) {
+    if (value >= 100) return 100;
+    if (value === undefined || value === null) return 1;
+    return value;
+  },
+
+  /**
+   * 1 if battery is at or below `this.lowBatteryPercentage`, else 0.
+   */
+  checkLowBattery(batteryVolts) {
+    if (this.checkBatteryVoltage(batteryVolts) <= this.lowBatteryPercentage) {
+      return 1;
+    }
+    return 0;
+  },
+
+  /**
+   * Clamp HomeKit brightness to 1–100. Currently a passthrough.
+   */
+  checkBrightnessValue(value) {
+    if (value >= 1 && value <= 100) return value;
+    return value;
+  },
+
+  /**
+   * Floor HomeKit ColorTemperature characteristic at 500 mireds.
+   */
+  checkColorTemp(color) {
+    if (color >= 500) return 500;
+    return color;
+  },
+
+  // ---- Lock / door / leak state aliases -----------------------------------
+
+  /**
+   * Wyze `hardlock` → HomeKit LockCurrentState / LockTargetState.
+   * Alias of `wyzeLockStateToHomeKit`.
+   */
+  getLockState(hardlock) {
+    return hardlock == 2 ? 0 : 1;
+  },
+
+  /**
+   * Wyze door state (lock bolt door) → HomeKit ContactSensorState.
+   * ≥ 2 → 1 (CONTACT_NOT_DETECTED), else passthrough.
+   */
+  getLockDoorState(deviceState) {
+    return deviceState >= 2 ? 1 : deviceState;
+  },
+
+  /**
+   * Wyze `ws_detect_state` → HomeKit LeakDetected.
+   * Alias of `wyzeLeakStateToHomeKit`.
+   */
+  getLeakSensorState(deviceState) {
+    return deviceState >= 2 ? 1 : deviceState;
+  },
+
+  // ---- Color temperature (Kelvin ↔ mireds) alias --------------------------
+
+  /**
+   * Wyze Kelvin → HomeKit mireds. Alias of `wyzeColorTempToHomeKit`.
+   */
+  kelvinToMired(value) {
+    return Math.round(1_000_000 / value);
+  },
+
   // ---- Constants ----------------------------------------------------------
 
   /** HomeKit ColorTemperature min/max (mireds). */
