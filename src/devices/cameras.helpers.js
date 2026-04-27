@@ -316,8 +316,10 @@ module.exports = {
    */
   async prepareCameraHKStream() {
     const [localRtpPort, localAudioRtpPort] = await Promise.all([pickFreeUdpPort(), pickFreeUdpPort()]);
-    const videoSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
-    const audioSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
+    // Mask to 31 bits — FFmpeg's -ssrc flag treats the value as signed int32
+    // and rejects anything > 2147483647.
+    const videoSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0) & 0x7FFFFFFF;
+    const audioSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0) & 0x7FFFFFFF;
     const localAddress = localIpAddress();
     return { localRtpPort, localAudioRtpPort, videoSsrc, audioSsrc, localAddress };
   },
@@ -397,7 +399,7 @@ module.exports = {
 
       if (logger) {
         videoFfmpeg.stderr.on("data", (chunk) =>
-          log("debug", `[stream] [ffmpeg/video] ${chunk.toString().trimEnd()}`)
+          log("warn", `[stream] [ffmpeg/video] ${chunk.toString().trimEnd()}`)
         );
       }
 
