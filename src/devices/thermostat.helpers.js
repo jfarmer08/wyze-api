@@ -45,6 +45,11 @@ module.exports = {
     return this.setThermostatCoolingSetpoint(device.mac, device.product_model, value);
   },
 
+  async setThermostatTemperature(deviceMac, deviceModel, coolingSetpoint, heatingSetpoint) {
+    await this.setThermostatCoolingSetpoint(deviceMac, deviceModel, coolingSetpoint);
+    await this.setThermostatHeatingSetpoint(deviceMac, deviceModel, heatingSetpoint);
+  },
+
   async thermostatTemperature(device, coolingSetpoint, heatingSetpoint) {
     return this.setThermostatTemperature(device.mac, device.product_model, coolingSetpoint, heatingSetpoint);
   },

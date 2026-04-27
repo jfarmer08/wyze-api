@@ -143,14 +143,6 @@ module.exports = {
   },
 
   /**
-   * Set both setpoints in one call (sequential writes).
-   */
-  async setThermostatTemperature(deviceMac, deviceModel, coolingSetpoint, heatingSetpoint) {
-    await this.setThermostatCoolingSetpoint(deviceMac, deviceModel, coolingSetpoint);
-    await this.setThermostatHeatingSetpoint(deviceMac, deviceModel, heatingSetpoint);
-  },
-
-  /**
    * Comfort-balance behavior (Settings → Behavior). 1–5.
    */
   async setThermostatComfortBalance(deviceMac, deviceModel, mode) {
