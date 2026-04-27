@@ -794,147 +794,30 @@ module.exports = class WyzeAPI {
 
   async getIotProp(deviceMac) {
     const keys = "iot_state,switch-power,switch-iot,single_press_type,double_press_type,triple_press_type,long_press_type,palm-state";
-
-    await this.maybeLogin();
-
     const payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
-    const signature = crypto.oliveCreateSignature(payload, this.access_token);
-
-    const config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-
-    const url = "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop";
-
-    if (this.apiLogEnabled) {
-      this.log.info(`Performing request: ${url}`);
-    }
-
-    try {
-      const result = await axios.get(url, config);
-
-      if (this.apiLogEnabled) {
-        this.log.info(`API response GetIotProp: ${JSON.stringify(result.data)}`);
-      }
-
-      return result.data;
-    } catch (error) {
-      this.log.error(`Request failed: ${error.message}`);
-
-      if (error.response) {
-        this.log.error(
-          `Response GetIotProp (${error.response.statusText}): ${JSON.stringify(error.response.data, null, 2)}`
-        );
-      }
-
-      throw error;
-    }
+    return this._oliveSignedGet(
+      "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop",
+      payload,
+      "GetIotProp"
+    );
   }
 
   async setIotProp(deviceMac, product_model, propKey, value) {
-    await this.maybeLogin();
-    let payload = payloadFactory.oliveCreatePostPayload(
-      deviceMac,
-      product_model,
-      propKey,
-      value
+    const payload = payloadFactory.oliveCreatePostPayload(deviceMac, product_model, propKey, value);
+    return this._oliveSignedPost(
+      "https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic",
+      payload,
+      "SetIotProp"
     );
-    let signature = crypto.oliveCreateSignatureSingle(
-      JSON.stringify(payload),
-      this.access_token
-    );
-
-    const config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "Content-Type": "application/json",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-    };
-
-    try {
-      const url =
-        "https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic";
-      const result = await axios.post(url, JSON.stringify(payload), config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response SetIotProp: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-      if (e.response) {
-        this.log.error(
-          `Response SetIotProp (${e.response.statusText}): ${JSON.stringify(
-            e.response.data,
-            null,
-            "\t"
-          )}`
-        );
-      }
-      throw e;
-    }
   }
 
   async getUserProfile() {
-    await this.maybeLogin();
-
-    let payload = payloadFactory.oliveCreateUserInfoPayload();
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-    try {
-      const url =
-        "https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile";
-      if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response GetUserProfile: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response GetUserProfile (${e.response.statusText}): ${JSON.stringify(
-            e.response.data,
-            null,
-            "\t"
-          )}`
-        );
-      }
-      throw e;
-    }
+    const payload = payloadFactory.oliveCreateUserInfoPayload();
+    return this._oliveSignedGet(
+      "https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile",
+      payload,
+      "GetUserProfile"
+    );
   }
 
   async disableRemeAlarm(hms_id) {
@@ -972,46 +855,12 @@ module.exports = class WyzeAPI {
   }
 
   async getPlanBindingListByUser() {
-    await this.maybeLogin();
-    let payload = payloadFactory.oliveCreateHmsPayload();
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: this.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-
-    try {
-      const url =
-        "https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user";
-      if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response GetPlanBindingListByUser: ${JSON.stringify(
-            result.data
-          )}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-      if (e.response) {
-        this.log.error(
-          `Response GetPlanBindingListByUser (${e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
+    const payload = payloadFactory.oliveCreateHmsPayload();
+    return this._oliveSignedGet(
+      "https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user",
+      payload,
+      "GetPlanBindingListByUser"
+    );
   }
 
   async monitoringProfileStateStatus(hms_id) {
@@ -1111,17 +960,21 @@ module.exports = class WyzeAPI {
     }
   }
 
+  // Generic olive-signed primitives. Many Wyze plugin services (earth,
+  // sirius, platform, membership, lockwood) share the same signing scheme:
+  // `signature2` over the sorted params/body, plus the standard appid /
+  // appinfo / phoneid / access_token / Accept-Encoding header set. These
+  // primitives take a full URL so each service has its own thin wrapper
+  // without re-implementing the boilerplate.
+
   /**
-   * Send a signed GET to the Earth thermostat service. Same olive signing
-   * as `thermostatGetIotProp`. Caller supplies the full param dict; nonce
-   * is added automatically and included in the signature.
-   * @param {string} urlPath — e.g. "/plugin/earth/device_info"
-   * @param {Object} params — query params (did/device_id, keys, etc.)
+   * Generic olive-signed GET. Caller passes a full URL and a params object
+   * (must include nonce — use payloadFactory.oliveCreateGetPayload or
+   * include `nonce: Date.now().toString()` directly).
    */
-  async _earthGet(urlPath, params = {}) {
+  async _oliveSignedGet(url, params, label) {
     await this.maybeLogin();
-    const payload = { ...params, nonce: Date.now().toString() };
-    const signature = crypto.oliveCreateSignature(payload, this.access_token);
+    const signature = crypto.oliveCreateSignature(params, this.access_token);
     const config = {
       headers: {
         "Accept-Encoding": "gzip",
@@ -1132,82 +985,34 @@ module.exports = class WyzeAPI {
         access_token: this.access_token,
         signature2: signature,
       },
-      params: payload,
+      params,
     };
-    const url = `https://wyze-earth-service.wyzecam.com${urlPath}`;
     if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
     try {
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
-        this.log.info(`API response Earth GET ${urlPath}: ${JSON.stringify(result.data)}`);
+        this.log.info(`API response ${label || "Olive GET"}: ${JSON.stringify(result.data)}`);
       }
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);
       if (e.response) {
         this.log.error(
-          `Response Earth GET ${urlPath} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+          `Response ${label || "Olive GET"} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
         );
       }
       throw e;
     }
   }
 
-  async thermostatGetIotProp(deviceMac) {
+  /**
+   * Generic olive-signed POST. Body is signed as a JSON string and sent
+   * as the request body.
+   */
+  async _oliveSignedPost(url, payload, label) {
     await this.maybeLogin();
-    let keys =
-      "trigger_off_val,emheat,temperature,humidity,time2temp_val,protect_time,mode_sys,heat_sp,cool_sp, current_scenario,config_scenario,temp_unit,fan_mode,iot_state,w_city_id,w_lat,w_lon,working_state, dev_hold,dev_holdtime,asw_hold,app_version,setup_state,wiring_logic_id,save_comfort_balance, kid_lock,calibrate_humidity,calibrate_temperature,fancirc_time,query_schedule";
-    let payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
-    let signature = crypto.oliveCreateSignature(payload, this.access_token);
-    let config = {
-      headers: {
-        "Accept-Encoding": "gzip",
-        "User-Agent": this.userAgent,
-        appid: constants.oliveAppId,
-        appinfo: constants.appInfo,
-        phoneid: constants.phoneId,
-        access_token: this.access_token,
-        signature2: signature,
-      },
-      params: payload,
-    };
-    try {
-      const url =
-        "https://wyze-earth-service.wyzecam.com/plugin/earth/get_iot_prop";
-      if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
-      const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(
-          `API response ThermostatGetIotProp: ${JSON.stringify(result.data)}`
-        );
-      }
-
-      return result.data;
-    } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
-      if (e.response) {
-        this.log.error(
-          `Response ThermostatGetIotProp (${e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
-        );
-      }
-      throw e;
-    }
-  }
-
-  async thermostatSetIotProp(deviceMac, deviceModel, propKey, value) {
-    await this.maybeLogin();
-    let payload = payloadFactory.oliveCreatePostPayload(
-      deviceMac,
-      deviceModel,
-      propKey,
-      value
-    );
-    let signature = crypto.oliveCreateSignatureSingle(
-      JSON.stringify(payload),
-      this.access_token
-    );
+    const bodyStr = JSON.stringify(payload);
+    const signature = crypto.oliveCreateSignatureSingle(bodyStr, this.access_token);
     const config = {
       headers: {
         "Accept-Encoding": "gzip",
@@ -1220,29 +1025,61 @@ module.exports = class WyzeAPI {
         signature2: signature,
       },
     };
-
+    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
     try {
-      const url =
-        "https://wyze-earth-service.wyzecam.com/plugin/earth/set_iot_prop_by_topic";
-      const result = await axios.post(url, JSON.stringify(payload), config);
+      const result = await axios.post(url, bodyStr, config);
       if (this.apiLogEnabled) {
-        this.log.info(
-          `API response ThermostatSetIotProp: ${JSON.stringify(result.data)}`
-        );
+        this.log.info(`API response ${label || "Olive POST"}: ${JSON.stringify(result.data)}`);
       }
-
       return result.data;
     } catch (e) {
-      this.log.error(`Request failed: ${e}`);
-
+      this.log.error(`Request failed: ${e.message}`);
       if (e.response) {
         this.log.error(
-          `Response ThermostatSetIotProp (${e.response.statusText
-          }): ${JSON.stringify(e.response.data, null, "\t")}`
+          `Response ${label || "Olive POST"} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
         );
       }
       throw e;
     }
+  }
+
+  /**
+   * Earth (thermostat) GET. `nonce` is added if not supplied.
+   * @param {string} urlPath — e.g. "/plugin/earth/device_info"
+   * @param {Object} params
+   */
+  async _earthGet(urlPath, params = {}) {
+    const withNonce = params.nonce ? params : { ...params, nonce: Date.now().toString() };
+    return this._oliveSignedGet(
+      `https://wyze-earth-service.wyzecam.com${urlPath}`,
+      withNonce,
+      `Earth GET ${urlPath}`
+    );
+  }
+
+  /**
+   * Earth (thermostat) POST.
+   * @param {string} urlPath
+   * @param {Object} payload
+   */
+  async _earthPost(urlPath, payload) {
+    return this._oliveSignedPost(
+      `https://wyze-earth-service.wyzecam.com${urlPath}`,
+      payload,
+      `Earth POST ${urlPath}`
+    );
+  }
+
+  async thermostatGetIotProp(deviceMac) {
+    const keys =
+      "trigger_off_val,emheat,temperature,humidity,time2temp_val,protect_time,mode_sys,heat_sp,cool_sp, current_scenario,config_scenario,temp_unit,fan_mode,iot_state,w_city_id,w_lat,w_lon,working_state, dev_hold,dev_holdtime,asw_hold,app_version,setup_state,wiring_logic_id,save_comfort_balance, kid_lock,calibrate_humidity,calibrate_temperature,fancirc_time,query_schedule";
+    const payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
+    return this._earthGet("/plugin/earth/get_iot_prop", payload);
+  }
+
+  async thermostatSetIotProp(deviceMac, deviceModel, propKey, value) {
+    const payload = payloadFactory.oliveCreatePostPayload(deviceMac, deviceModel, propKey, value);
+    return this._earthPost("/plugin/earth/set_iot_prop_by_topic", payload);
   }
 
   // Default key sets for Earth-service reads. Mirrors what the thermostat
