@@ -39,7 +39,7 @@ const H264_CODECS = [
 ];
 
 let _ffmpegBinaryPath = null;
-function _resolveFfmpegPath() {
+function resolveFfmpegPath() {
   if (_ffmpegBinaryPath) return _ffmpegBinaryPath;
   try {
     const ffmpegStatic = require("ffmpeg-static");
@@ -52,12 +52,7 @@ function _resolveFfmpegPath() {
   return _ffmpegBinaryPath;
 }
 
-/**
- * Bind a UDP socket on a random free port on 127.0.0.1, then close it and
- * return the port. There's a tiny race window before FFmpeg binds the same
- * port — acceptable for a local-only socket.
- */
-async function _pickFreeUdpPort() {
+async function pickFreeUdpPort() {
   return new Promise((resolve, reject) => {
     const sock = dgram.createSocket("udp4");
     sock.once("error", reject);
@@ -68,7 +63,7 @@ async function _pickFreeUdpPort() {
   });
 }
 
-function _writeSdpFile(rtpPort) {
+function writeSdpFile(rtpPort) {
   const sdp = `v=0
 o=- 0 0 IN IP4 127.0.0.1
 s=WyzeCapture
@@ -86,8 +81,17 @@ a=fmtp:96 packetization-mode=1
   return sdpPath;
 }
 
+function localIpAddress() {
+  for (const iface of Object.values(os.networkInterfaces())) {
+    for (const entry of iface) {
+      if (!entry.internal && entry.family === "IPv4") return entry.address;
+    }
+  }
+  return "0.0.0.0";
+}
+
 function _spawnFfmpeg(sdpPath) {
-  return spawn(_resolveFfmpegPath(), [
+  return spawn(resolveFfmpegPath(), [
     "-loglevel", "error",
     "-protocol_whitelist", "file,rtp,udp",
     "-fflags", "+genpts+discardcorrupt+nobuffer",
@@ -154,8 +158,8 @@ async function captureStreamFrame({
     if (typeof logger[level] === "function") logger[level](`[capture] ${msg}`);
   };
 
-  const rtpPort = await _pickFreeUdpPort();
-  const sdpPath = _writeSdpFile(rtpPort);
+  const rtpPort = await pickFreeUdpPort();
+  const sdpPath = writeSdpFile(rtpPort);
 
   let ffmpeg = null;
   let pc = null;
@@ -185,7 +189,7 @@ async function captureStreamFrame({
       ffmpeg.once("error", (err) => {
         if (err && err.code === "ENOENT") {
           reject(new Error(
-            `ffmpeg binary not found (tried: ${_resolveFfmpegPath()}). ` +
+            `ffmpeg binary not found (tried: ${resolveFfmpegPath()}). ` +
             "Re-run `npm install` to fetch the bundled ffmpeg via ffmpeg-static, " +
             "or install ffmpeg on your system PATH if your platform isn't supported."
           ));
@@ -370,4 +374,11 @@ async function startRtpForwarding({
   return { stop };
 }
 
-module.exports = { captureStreamFrame, startRtpForwarding };
+module.exports = {
+  captureStreamFrame,
+  startRtpForwarding,
+  pickFreeUdpPort,
+  writeSdpFile,
+  resolveFfmpegPath,
+  localIpAddress,
+};

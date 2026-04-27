@@ -1,5 +1,13 @@
 const nodeCrypto = require("crypto");
-const { startRtpForwarding } = require("./cameraStreamCapture");
+const fs = require("fs");
+const { spawn } = require("child_process");
+const {
+  startRtpForwarding,
+  pickFreeUdpPort,
+  writeSdpFile,
+  resolveFfmpegPath,
+  localIpAddress,
+} = require("./cameraStreamCapture");
 const {
   propertyIds: PIDs,
   propertyValues: PVals,
@@ -297,6 +305,87 @@ module.exports = {
       localRtpPort,
       logger: this.apiLogEnabled ? this.log : null,
     });
+  },
+
+  /**
+   * Allocate a local RTP port and generate an SSRC for a HomeKit stream session.
+   * Call once per prepareStream, then pass the result into startCameraHKStream.
+   */
+  async prepareCameraHKStream() {
+    const localRtpPort = await pickFreeUdpPort();
+    const videoSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
+    const localAddress = localIpAddress();
+    return { localRtpPort, videoSsrc, localAddress };
+  },
+
+  /**
+   * Start a HomeKit SRTP video stream for a camera.
+   * Connects WebRTC, forwards RTP locally, then bridges to HomeKit via FFmpeg SRTP.
+   * Returns { stop() } — call stop() when the stream ends.
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} opts
+   * @param {number} opts.localRtpPort      — from prepareCameraHKStream
+   * @param {string} opts.targetAddress     — HomeKit client IP
+   * @param {number} opts.videoPort         — HomeKit RTP port
+   * @param {number} opts.rtcpPort          — HomeKit RTCP port
+   * @param {Buffer} opts.srtpKey           — 16-byte SRTP key from HomeKit
+   * @param {Buffer} opts.srtpSalt          — 14-byte SRTP salt from HomeKit
+   * @param {number} opts.videoSsrc         — from prepareCameraHKStream
+   * @param {number} [opts.bitrate=300]     — max kbps
+   * @param {Object} [opts.logger]          — optional logger
+   */
+  async startCameraHKStream(deviceMac, deviceModel, {
+    localRtpPort,
+    targetAddress,
+    videoPort,
+    rtcpPort,
+    srtpKey,
+    srtpSalt,
+    videoSsrc,
+    bitrate = 300,
+    logger = null,
+  }) {
+    const rtpForwarder = await this.cameraStartRtpForwarding(deviceMac, deviceModel, localRtpPort);
+    const sdpPath = writeSdpFile(localRtpPort);
+    const srtpOutParams = Buffer.concat([srtpKey, srtpSalt]).toString("base64");
+    const cappedBitrate = Math.min(bitrate, 2000);
+
+    const ffmpeg = spawn(resolveFfmpegPath(), [
+      "-loglevel", "warning",
+      "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
+      "-fflags", "+genpts+nobuffer",
+      "-flags", "low_delay",
+      "-i", sdpPath,
+      "-c:v", "copy",
+      "-b:v", `${cappedBitrate}k`,
+      "-payload_type", "99",
+      "-ssrc", String(videoSsrc),
+      "-f", "rtp",
+      "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
+      "-srtp_out_params", srtpOutParams,
+      `srtp://${targetAddress}:${videoPort}?rtcpport=${rtcpPort}&pkt_size=1316`,
+    ], { stdio: ["ignore", "pipe", "pipe"] });
+
+    if (logger) {
+      ffmpeg.stderr.on("data", (chunk) => {
+        if (typeof logger.debug === "function")
+          logger.debug(`[stream] [ffmpeg] ${chunk.toString().trimEnd()}`);
+      });
+    }
+    ffmpeg.once("close", (code) => {
+      if (code && code !== 0 && logger && typeof logger.warn === "function")
+        logger.warn(`[stream] FFmpeg exited (${code})`);
+    });
+
+    const stop = () => {
+      try { ffmpeg.kill("SIGKILL"); } catch (_) {}
+      try { rtpForwarder.stop(); } catch (_) {}
+      try { fs.unlinkSync(sdpPath); } catch (_) {}
+    };
+
+    return { stop };
   },
 
   // ---- Stream utility functions ---------------------------------------------
