@@ -1016,6 +1016,7 @@ Object.assign(
   module.exports.prototype,
   require("./shared/helpers"),
   require("./shared/accessors"),
+  require("./shared/homekit"),
   require("./services/olive"),
   require("./services/hms"),
   require("./services/ford"),

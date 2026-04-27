@@ -1,0 +1,158 @@
+/**
+ * Wyze ↔ HomeKit value converters. Mixed onto WyzeAPI prototype so the
+ * homebridge-wyze-smart-home plugin can call them as `client.xxx()`.
+ *
+ * All functions are pure — no network calls, no this-dependence.
+ */
+
+// Wyze color temperature range (Kelvin)
+const WYZE_COLOR_TEMP_MIN = 2700;
+const WYZE_COLOR_TEMP_MAX = 6500;
+
+// HomeKit ColorTemperature characteristic range (mireds).
+// Note: higher mireds = warmer, lower = cooler — the opposite of Kelvin.
+const HOMEKIT_COLOR_TEMP_MIN = 140; // coolest (~6500 K)
+const HOMEKIT_COLOR_TEMP_MAX = 500; // warmest (~2700 K)
+
+module.exports = {
+  // ---- Color temperature --------------------------------------------------
+
+  /**
+   * Wyze Kelvin (2700–6500) → HomeKit mireds (140–500).
+   * Uses the physical 1,000,000/K formula — consistent with `kelvinToMired`.
+   */
+  wyzeColorTempToHomeKit(kelvin) {
+    return Math.round(1_000_000 / kelvin);
+  },
+
+  /**
+   * HomeKit mireds (140–500) → Wyze Kelvin (2700–6500).
+   * Linear range map so the full Wyze palette fits the full HomeKit range.
+   */
+  homeKitColorTempToWyze(mireds) {
+    const t = (mireds - HOMEKIT_COLOR_TEMP_MAX) / (HOMEKIT_COLOR_TEMP_MIN - HOMEKIT_COLOR_TEMP_MAX);
+    return Math.round(WYZE_COLOR_TEMP_MIN + t * (WYZE_COLOR_TEMP_MAX - WYZE_COLOR_TEMP_MIN));
+  },
+
+  // ---- Lock ---------------------------------------------------------------
+
+  /**
+   * Wyze `hardlock` → HomeKit LockCurrentState / LockTargetState.
+   * hardlock 2 = unlocked → 0 (UNSECURED), anything else → 1 (SECURED).
+   * Alias of `getLockState` with a HomeKit-oriented name.
+   */
+  wyzeLockStateToHomeKit(hardlock) {
+    return hardlock === 2 ? 0 : 1;
+  },
+
+  /**
+   * Wyze `door_open_status` → HomeKit ContactSensorState.
+   * door_open_status 1 (open) → 1 (CONTACT_NOT_DETECTED).
+   * door_open_status 0 (closed) → 0 (CONTACT_DETECTED).
+   */
+  wyzeContactStateToHomeKit(doorOpenStatus) {
+    return doorOpenStatus === 1 ? 1 : 0;
+  },
+
+  // ---- Thermostat ---------------------------------------------------------
+
+  /**
+   * Wyze `mode_sys` string → HomeKit TargetHeatingCoolingState integer.
+   *   off → 0, heat → 1, cool → 2, auto → 3
+   */
+  wyzeThermostatModeToHomeKit(modeSys) {
+    return { off: 0, heat: 1, cool: 2, auto: 3 }[modeSys] ?? 0;
+  },
+
+  /**
+   * HomeKit TargetHeatingCoolingState integer → Wyze `mode_sys` string.
+   *   0 → "off", 1 → "heat", 2 → "cool", 3 → "auto"
+   */
+  homeKitThermostatModeToWyze(value) {
+    return ["off", "heat", "cool", "auto"][value] ?? "off";
+  },
+
+  /**
+   * Wyze `working_state` string → HomeKit CurrentHeatingCoolingState integer.
+   *   idle → 0, heating → 1, cooling → 2
+   */
+  wyzeThermostatWorkingStateToHomeKit(workingState) {
+    return { idle: 0, heating: 1, cooling: 2 }[workingState] ?? 0;
+  },
+
+  /**
+   * Wyze `temp_unit` string → HomeKit TemperatureDisplayUnits integer.
+   *   "C" → 0 (CELSIUS), "F" → 1 (FAHRENHEIT)
+   */
+  wyzeTempUnitToHomeKit(unit) {
+    return unit === "F" ? 1 : 0;
+  },
+
+  // ---- Color (HEX ↔ HSV) --------------------------------------------------
+
+  /**
+   * Wyze HEX color string → HomeKit Hue + Saturation.
+   * Wyze stores color as a 6-char hex RGB (e.g. "FF5733").
+   * HomeKit uses Hue (0–360°) and Saturation (0–100%).
+   *
+   * @param {string} hex — 6-char hex string, no leading #
+   * @returns {{ hue: number, saturation: number }}
+   */
+  wyzeColorToHomeKit(hex) {
+    const r = parseInt(hex.slice(0, 2), 16) / 255;
+    const g = parseInt(hex.slice(2, 4), 16) / 255;
+    const b = parseInt(hex.slice(4, 6), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+
+    let hue = 0;
+    if (delta !== 0) {
+      if (max === r) hue = ((g - b) / delta) % 6;
+      else if (max === g) hue = (b - r) / delta + 2;
+      else hue = (r - g) / delta + 4;
+      hue = Math.round(hue * 60);
+      if (hue < 0) hue += 360;
+    }
+
+    const saturation = max === 0 ? 0 : Math.round((delta / max) * 100);
+    return { hue, saturation };
+  },
+
+  /**
+   * HomeKit Hue (0–360°) + Saturation (0–100%) → Wyze HEX color string.
+   * Value (brightness) is always set to 100 — brightness is a separate
+   * HomeKit characteristic controlled by `setBrightness`.
+   *
+   * @param {number} hue — 0–360
+   * @param {number} saturation — 0–100
+   * @returns {string} — 6-char uppercase hex, no leading #
+   */
+  homeKitColorToWyze(hue, saturation) {
+    const s = saturation / 100;
+    const c = s; // value fixed at 1
+    const x = c * (1 - Math.abs(((hue / 60) % 2) - 1));
+    const m = 1 - c;
+
+    let r = 0, g = 0, b = 0;
+    if (hue < 60)       { r = c; g = x; b = 0; }
+    else if (hue < 120) { r = x; g = c; b = 0; }
+    else if (hue < 180) { r = 0; g = c; b = x; }
+    else if (hue < 240) { r = 0; g = x; b = c; }
+    else if (hue < 300) { r = x; g = 0; b = c; }
+    else                { r = c; g = 0; b = x; }
+
+    const toHex = (v) => Math.round((v + m) * 255).toString(16).padStart(2, "0").toUpperCase();
+    return `${toHex(r)}${toHex(g)}${toHex(b)}`;
+  },
+
+  // ---- Constants ----------------------------------------------------------
+
+  /** HomeKit ColorTemperature min/max (mireds). */
+  HOMEKIT_COLOR_TEMP_MIN,
+  HOMEKIT_COLOR_TEMP_MAX,
+
+  /** Wyze color temperature min/max (Kelvin). */
+  WYZE_COLOR_TEMP_MIN,
+  WYZE_COLOR_TEMP_MAX,
+};
