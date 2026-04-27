@@ -8,7 +8,7 @@ const payloadFactory = require("./utils/payloadFactory");
 const crypto = require("./utils/crypto");
 const constants = require("./constants");
 const util = require("./util");
-const cameraStreamCapture = require("./cameraStreamCapture");
+const cameraStreamCapture = require("./devices/cameraStreamCapture");
 const types = require("./types");
 
 const { propertyIds: PIDs } = types;

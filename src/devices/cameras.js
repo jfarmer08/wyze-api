@@ -8,7 +8,7 @@ const {
   DeviceModels,
   DeviceMgmtToggleProps,
 } = require("../types");
-const cameraStreamCapture = require("../cameraStreamCapture");
+const cameraStreamCapture = require("./cameraStreamCapture");
 
 /**
  * Wyze Cameras — controls (power, siren, lights, motion, notifications,
