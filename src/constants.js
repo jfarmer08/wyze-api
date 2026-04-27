@@ -39,8 +39,7 @@ module.exports = Object.freeze({
   venusAppId: "venp_4c30f812828de875",
   venusSigningSecret: "CVCSNoa0ALsNEpgKls6ybVTVOmGzFoiq",
   vacuumModels: ["JA_RO2"],
-  // Emulation constants used by /plugin/venus/event_tracking. Mirrored from
-  // wyze-sdk's VenusServiceClient class fields.
+  // Emulation constants used by /plugin/venus/event_tracking.
   venusPluginVersion: "2.35.1",
   vacuumFirmwareVersion: "1.6.113",
   vacuumEventTrackingUuid: "88DBF3344D20B5597DB7C8F0AFBB4030",

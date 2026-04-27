@@ -22,6 +22,7 @@ Full reference for [`wyze-api`](https://www.npmjs.com/package/wyze-api), an unof
 - **[Irrigation / Sprinkler](Irrigation.md)** — zones, quick-run, stop, schedule history
 - **[HMS — Home Monitoring System](HMS.md)** — alarm modes (off/home/away)
 - **[Robot Vacuum](Robot-Vacuum.md)** — `JA_RO2` clean/pause/dock/cancel/rooms, suction level, maps, sweep records
+- **[Sensors](Sensors.md)** — Wyze Sense contact (`DWS3U`/`DWS2U`) and motion (`PIR3U`/`PIR2U`) lookups + state accessors
 
 ## Reference
 

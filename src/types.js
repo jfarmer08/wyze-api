@@ -1,6 +1,5 @@
-// Wyze property IDs (PIDs). Names mirror wyze-sdk's *Props classes where
-// the source documents them; otherwise they reflect our existing method
-// naming (e.g. P1001 → MOTION_DETECTION matches cameraMotionOn/Off).
+// Wyze property IDs (PIDs). Names reflect each property's purpose in our
+// public methods (e.g. P1001 → MOTION_DETECTION matches cameraMotionOn/Off).
 //
 // P1056 is shared between the camera flood light and spotlight (devices
 // only expose one of the two physically) — kept under CAMERA_FLOOD_LIGHT
@@ -17,6 +16,10 @@ const propertyIds = Object.freeze({
   BRIGHTNESS: "P1501",        // LightProps brightness
   COLOR_TEMP: "P1502",        // LightProps color_temp
   COLOR: "P1507",             // LightProps color (HEX RGB)
+  CONTROL_LIGHT: "P1508",     // LightProps control_light (LightControlMode)
+  POWER_LOSS_RECOVERY: "P1509", // LightProps power_loss_recovery
+  SUN_MATCH: "P1528",         // LightProps sun_match (mimic sunlight CCT)
+  AWAY_MODE: "P1506",         // LightProps away_mode (light vacation mode)
 });
 
 // Documented value sets for the PIDs above. Use these instead of inline
@@ -49,9 +52,9 @@ const propertyValues = Object.freeze({
   CAMERA_SIREN: Object.freeze({ ON: "1", OFF: "2" }),
 });
 
-// Master product_model registry, mirroring wyze_sdk.models.devices.base.DeviceModels.
-// Single source of truth for product_model -> family. Aggregate keys (CAMERA, BULB,
-// PLUG, MESH_BULB, LIGHT_STRIP, SCALE) are computed from their components.
+// Master product_model registry. Single source of truth for product_model
+// -> family. Aggregate keys (CAMERA, BULB, PLUG, MESH_BULB, LIGHT_STRIP,
+// SCALE) are computed from their components.
 const _CAMERA_V1 = ["WYZEC1"];
 const _CAMERA_V2 = ["WYZEC1-JZ"];
 const _CAMERA_V3 = ["WYZE_CAKP2JFUS"];
@@ -145,9 +148,26 @@ const wyze2HomekitWorkingStates = {
 
 const GET_PAYLOAD = new Set(["param_info"]);
 
-// Wyze Lock (V1, YD.LO1) — code/description tables from wyze_sdk.models.devices.locks.
-// Codes are wire values (Wyze API integers); descriptions are the human strings
-// used in the Wyze app. Use `parseLockStatus(code)` etc. for code-to-name lookup.
+// Wyze Light/Bulb — codes used by mesh bulbs and light strips.
+
+// Mesh-bulb / light-strip color control mode. Written to P1508. Strip-aware
+// setters flip this mode so the strip switches to the right behavior.
+const LightControlMode = Object.freeze({
+  COLOR: 1,
+  TEMPERATURE: 2,
+  FRAGMENTED: 3, // visual effects / scenes
+});
+
+// Behavior on power restore after an outage. Written to P1509.
+const LightPowerLossRecoveryMode = Object.freeze({
+  POWER_ON: 0,                  // turn the light on
+  RESTORE_PREVIOUS_STATE: 1,    // maintain previous state
+});
+
+// Wyze Lock (V1, YD.LO1) — code/description tables.
+// Codes are wire values (Wyze API integers); descriptions are the human
+// strings used in the Wyze app. Use `parseLockStatus(code)` etc. for
+// code-to-name lookup.
 
 const LockStatusType = Object.freeze({
   OFFLINE: -1,
@@ -290,8 +310,77 @@ const LockKeyPermissionType = Object.freeze({
   RECURRING: 4,
 });
 
-// Wyze Robot Vacuum (Venus service) — codes lifted from wyze_sdk's
-// VacuumDeviceControlRequestType / RequestValue / VacuumStatus / VacuumSuctionLevel.
+// Wyze Thermostat (CO_EA1) — IoT prop value enums for typed setters.
+
+const ThermostatSystemMode = Object.freeze({
+  AUTO: "auto",
+  COOL: "cool",
+  HEAT: "heat",
+  OFF: "off",
+});
+
+const ThermostatFanMode = Object.freeze({
+  AUTO: "auto",
+  CYCLE: "circ",
+  ON: "on",
+});
+
+const ThermostatScenarioType = Object.freeze({
+  HOME: "home",
+  AWAY: "away",
+  SLEEP: "sleep",
+});
+
+// Read-only — current operational state of the system.
+const ThermostatWorkingState = Object.freeze({
+  IDLE: "idle",
+  HEATING: "heating",
+  COOLING: "cooling",
+});
+
+const ThermostatTempUnit = Object.freeze({
+  FAHRENHEIT: "F",
+  CELSIUS: "C",
+});
+
+// Comfort-balance behavior — Settings -> Behavior. Written to save_comfort_balance.
+const ThermostatComfortBalanceMode = Object.freeze({
+  MAX_SAVINGS: 1,
+  SUSTAINABILITY: 2,
+  BALANCE: 3,
+  BETTER_COMFORT: 4,
+  MAX_COMFORT: 5,
+});
+
+const ThermostatComfortBalanceDescription = Object.freeze({
+  1: "Maximum savings",
+  2: "Sustainability",
+  3: "Balance comfort and savings",
+  4: "Weighted comfort balance",
+  5: "Maximum comfort",
+});
+
+// Room Sensor (CO_TH1) — battery level + comfort-control inclusion + connectivity.
+const RoomSensorBatteryLevel = Object.freeze({
+  EMPTY: 1,
+  LOW: 2,
+  HALF: 3,
+  FULL: 4,
+});
+
+const RoomSensorStatusType = Object.freeze({
+  AUTO_UP: "auto_up",                // included in comfort control
+  MANUAL_UP: "manual_up",            // manually included
+  MANUAL_DOWN: "manual_down",        // manually excluded
+});
+
+const RoomSensorStateType = Object.freeze({
+  ONLINE: "connect",
+  OFFLINE: "",
+});
+
+// Wyze Robot Vacuum (Venus service) — control type / value / status /
+// suction level codes.
 
 const VacuumControlType = Object.freeze({
   GLOBAL_SWEEPING: 0,
@@ -329,8 +418,8 @@ const VacuumPreferenceType = Object.freeze({
 });
 
 // Vacuum mode codes — one mode value can map to many codes (firmware/hardware
-// variants), so this is a many-to-one lookup. Pulled from VacuumMode in
-// wyze_sdk.models.devices.vacuums (sourced from com.wyze.sweeprobot f0.c).
+// variants), so this is a many-to-one lookup. Sourced from the Wyze Android
+// app (com.wyze.sweeprobot).
 const VacuumModeCodes = Object.freeze({
   IDLE: [0, 14, 29, 35, 40],
   CLEANING: [1, 30, 1101, 1201, 1301, 1401],
@@ -357,7 +446,7 @@ function parseVacuumMode(code) {
   return null;
 }
 
-// Vacuum fault codes — see VacuumFaultCode in wyze_sdk.
+// Vacuum fault codes — `code -> description` table.
 const VacuumFaultCode = Object.freeze({
   500: "Lidar sensor blocked",
   501: "Vacuum not on ground",
@@ -402,7 +491,7 @@ const VenusDotArg3 = Object.freeze({
 });
 
 // VacuumControlType.code -> human-readable description that becomes `eventKey`
-// in the event-tracking payload (mirrors wyze-sdk's `type.description`).
+// in the event-tracking payload.
 const VacuumControlTypeDescription = Object.freeze({
   0: "Clean",
   3: "Recharge",
@@ -410,9 +499,8 @@ const VacuumControlTypeDescription = Object.freeze({
   7: "Quick Mapping",
 });
 
-// Default prop key lists used by getVacuumInfo, mirroring Vacuum.props() and
-// Vacuum.device_info_props() in wyze-sdk. NOTE: "battary" is the literal
-// Wyze API key (typo preserved by the server).
+// Default prop key lists used by getVacuumInfo. NOTE: "battary" is the
+// literal Wyze API key (typo preserved by the server).
 const VacuumIotPropKeys = Object.freeze([
   "iot_state",
   "battary",
@@ -479,4 +567,16 @@ module.exports = {
   LockKeyOperation,
   LockKeyOperationStage,
   LockKeyPermissionType,
+  LightControlMode,
+  LightPowerLossRecoveryMode,
+  ThermostatSystemMode,
+  ThermostatFanMode,
+  ThermostatScenarioType,
+  ThermostatWorkingState,
+  ThermostatTempUnit,
+  ThermostatComfortBalanceMode,
+  ThermostatComfortBalanceDescription,
+  RoomSensorBatteryLevel,
+  RoomSensorStatusType,
+  RoomSensorStateType,
 };

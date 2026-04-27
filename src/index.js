@@ -691,6 +691,46 @@ module.exports = class WyzeAPI {
     return result.data;
   }
 
+  // Generic device-side timer primitives. Wyze devices (plugs, bulbs, lights,
+  // wall switches) support a server-tracked timer that flips the device on
+  // or off after a delay. action_type=1 corresponds to the on/off action.
+
+  /**
+   * Set a delayed on/off timer on a device.
+   * @param {string} deviceMac
+   * @param {number} delaySeconds
+   * @param {number} actionValue — 1 to turn on, 0 to turn off, after the delay
+   */
+  async setDeviceTimer(deviceMac, delaySeconds, actionValue) {
+    const data = {
+      device_mac: deviceMac,
+      action_type: 1,
+      action_value: actionValue,
+      delay_time: delaySeconds,
+      plan_execute_ts: Date.now() + delaySeconds * 1000,
+    };
+    const result = await this.request("app/v2/device/timer/set", data);
+    return result.data;
+  }
+
+  /**
+   * Read the active on/off timer for a device, if any.
+   */
+  async getDeviceTimer(deviceMac, actionType = 1) {
+    const data = { device_mac: deviceMac, action_type: actionType };
+    const result = await this.request("app/v2/device/timer/get", data);
+    return result.data;
+  }
+
+  /**
+   * Cancel any pending on/off timer for a device.
+   */
+  async cancelDeviceTimer(deviceMac, actionType = 1) {
+    const data = { device_mac: deviceMac, action_type: actionType };
+    const result = await this.request("app/v2/device/timer/cancel", data);
+    return result.data;
+  }
+
   async runAction(deviceMac, deviceModel, actionKey) {
     const data = {
       instance_id: deviceMac,
@@ -1071,6 +1111,48 @@ module.exports = class WyzeAPI {
     }
   }
 
+  /**
+   * Send a signed GET to the Earth thermostat service. Same olive signing
+   * as `thermostatGetIotProp`. Caller supplies the full param dict; nonce
+   * is added automatically and included in the signature.
+   * @param {string} urlPath — e.g. "/plugin/earth/device_info"
+   * @param {Object} params — query params (did/device_id, keys, etc.)
+   */
+  async _earthGet(urlPath, params = {}) {
+    await this.maybeLogin();
+    const payload = { ...params, nonce: Date.now().toString() };
+    const signature = crypto.oliveCreateSignature(payload, this.access_token);
+    const config = {
+      headers: {
+        "Accept-Encoding": "gzip",
+        "User-Agent": this.userAgent,
+        appid: constants.oliveAppId,
+        appinfo: constants.appInfo,
+        phoneid: this.phoneId,
+        access_token: this.access_token,
+        signature2: signature,
+      },
+      params: payload,
+    };
+    const url = `https://wyze-earth-service.wyzecam.com${urlPath}`;
+    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    try {
+      const result = await axios.get(url, config);
+      if (this.apiLogEnabled) {
+        this.log.info(`API response Earth GET ${urlPath}: ${JSON.stringify(result.data)}`);
+      }
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e.message}`);
+      if (e.response) {
+        this.log.error(
+          `Response Earth GET ${urlPath} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+        );
+      }
+      throw e;
+    }
+  }
+
   async thermostatGetIotProp(deviceMac) {
     await this.maybeLogin();
     let keys =
@@ -1161,6 +1243,222 @@ module.exports = class WyzeAPI {
       }
       throw e;
     }
+  }
+
+  // Default key sets for Earth-service reads. Mirrors what the thermostat
+  // app reads at home-screen render time.
+  static get THERMOSTAT_DEVICE_INFO_KEYS() {
+    return ["device_id", "device_type", "model", "mac", "firmware_ver", "main_device", "ip", "ssid"];
+  }
+
+  static get ROOM_SENSOR_PROP_KEYS() {
+    return ["temperature", "humidity", "battery", "rssi", "iot_state"];
+  }
+
+  /**
+   * Read device-level info for a thermostat (firmware, MAC, IP, SSID, etc.).
+   * @param {string} deviceMac
+   * @param {string|string[]} [keys] — defaults to a sensible set of device fields
+   */
+  async getThermostatDeviceInfo(deviceMac, keys = WyzeAPI.THERMOSTAT_DEVICE_INFO_KEYS) {
+    const params = {
+      device_id: deviceMac,
+      keys: Array.isArray(keys) ? keys.join(",") : keys,
+    };
+    return this._earthGet("/plugin/earth/device_info", params);
+  }
+
+  /**
+   * List the room sensors (CO_TH1) paired with a thermostat.
+   * @param {string} deviceMac
+   */
+  async getThermostatSensors(deviceMac) {
+    return this._earthGet("/plugin/earth/get_sub_device", { device_id: deviceMac });
+  }
+
+  /**
+   * Combined snapshot of a thermostat — list entry + IoT props + device
+   * info. Tolerates a missing sub-fetch (logs a warning, returns what's
+   * available).
+   *
+   * @param {string} mac
+   * @returns {Promise<Object|null>}
+   */
+  async getThermostatInfo(mac) {
+    const devices = await this.getDeviceList();
+    const tstat = devices.find(
+      (d) => d.mac === mac && types.DeviceModels.THERMOSTAT.includes(d.product_model)
+    );
+    if (!tstat) return null;
+
+    const result = { ...tstat };
+
+    const safe = async (label, fn) => {
+      try {
+        return await fn();
+      } catch (err) {
+        this.log.warning(`getThermostatInfo: ${label} failed: ${err.message}`);
+        return null;
+      }
+    };
+
+    const iot = await safe("iot_prop", () => this.thermostatGetIotProp(tstat.mac));
+    if (iot?.data?.props) Object.assign(result, iot.data.props);
+
+    const info = await safe("device_info", () => this.getThermostatDeviceInfo(tstat.mac));
+    if (info?.data?.settings) Object.assign(result, info.data.settings);
+
+    return result;
+  }
+
+  // Thermostat typed setters — thin wrappers around thermostatSetIotProp
+  // that constrain values to the valid set. Each is a single prop write
+  // unless noted (setThermostatTemperature / holdThermostat / clearThermostatHold
+  // do two writes).
+
+  _validateOneOf(value, allowed, label) {
+    const list = Object.values(allowed);
+    if (!list.includes(value)) {
+      throw new Error(
+        `${label}: ${JSON.stringify(value)} is not a valid value (expected one of ${list.map((v) => JSON.stringify(v)).join(", ")})`
+      );
+    }
+  }
+
+  /**
+   * Set the system mode — one of `auto`, `cool`, `heat`, `off`.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {string} mode — see `WyzeAPI.ThermostatSystemMode`
+   */
+  async setThermostatSystemMode(deviceMac, deviceModel, mode) {
+    this._validateOneOf(mode, types.ThermostatSystemMode, "setThermostatSystemMode");
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "mode_sys", mode);
+  }
+
+  /**
+   * Set the fan mode — `auto`, `circ`, or `on`.
+   */
+  async setThermostatFanMode(deviceMac, deviceModel, mode) {
+    this._validateOneOf(mode, types.ThermostatFanMode, "setThermostatFanMode");
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "fan_mode", mode);
+  }
+
+  /**
+   * Set the active scenario — `home`, `away`, or `sleep`.
+   */
+  async setThermostatScenario(deviceMac, deviceModel, scenario) {
+    this._validateOneOf(scenario, types.ThermostatScenarioType, "setThermostatScenario");
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "current_scenario", scenario);
+  }
+
+  /**
+   * Set the heating setpoint. Wyze stores setpoints as tenths of a degree
+   * Fahrenheit (e.g. `680` = 68.0°F) regardless of the user's display unit.
+   * @param {number} value — integer tenths-of-°F
+   */
+  async setThermostatHeatingSetpoint(deviceMac, deviceModel, value) {
+    if (!Number.isInteger(value)) {
+      throw new Error("setThermostatHeatingSetpoint: value must be an integer (tenths of °F)");
+    }
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "heat_sp", value);
+  }
+
+  /**
+   * Set the cooling setpoint (tenths of °F).
+   */
+  async setThermostatCoolingSetpoint(deviceMac, deviceModel, value) {
+    if (!Number.isInteger(value)) {
+      throw new Error("setThermostatCoolingSetpoint: value must be an integer (tenths of °F)");
+    }
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "cool_sp", value);
+  }
+
+  /**
+   * Set both setpoints in one call (sequential writes).
+   */
+  async setThermostatTemperature(deviceMac, deviceModel, coolingSetpoint, heatingSetpoint) {
+    await this.setThermostatCoolingSetpoint(deviceMac, deviceModel, coolingSetpoint);
+    await this.setThermostatHeatingSetpoint(deviceMac, deviceModel, heatingSetpoint);
+  }
+
+  /**
+   * Toggle the child-lock on the thermostat (kid_lock).
+   */
+  async setThermostatLock(deviceMac, deviceModel, locked) {
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "kid_lock", locked ? "1" : "0");
+  }
+
+  /**
+   * Set the comfort-balance behavior (Settings → Behavior).
+   * @param {number} mode — see `WyzeAPI.ThermostatComfortBalanceMode` (1–5)
+   */
+  async setThermostatComfortBalance(deviceMac, deviceModel, mode) {
+    this._validateOneOf(mode, types.ThermostatComfortBalanceMode, "setThermostatComfortBalance");
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "save_comfort_balance", mode);
+  }
+
+  /**
+   * Hold the current setpoint until a specific time (manual hold).
+   * Sets `dev_hold` true and `dev_holdtime` to the given epoch.
+   * @param {Date|number} until — Date or epoch ms
+   */
+  async holdThermostat(deviceMac, deviceModel, until) {
+    const ts = until instanceof Date ? until.getTime() : until;
+    if (!Number.isFinite(ts)) {
+      throw new Error("holdThermostat: `until` must be a Date or epoch ms");
+    }
+    await this.thermostatSetIotProp(deviceMac, deviceModel, "dev_hold", "1");
+    await this.thermostatSetIotProp(deviceMac, deviceModel, "dev_holdtime", String(ts));
+  }
+
+  /**
+   * Clear an active manual hold so the thermostat returns to its schedule.
+   */
+  async clearThermostatHold(deviceMac, deviceModel) {
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "dev_hold", "0");
+  }
+
+  // Thermostat device-object helpers (homebridge-style — accept a device).
+
+  async thermostatSystemMode(device, mode) {
+    return this.setThermostatSystemMode(device.mac, device.product_model, mode);
+  }
+
+  async thermostatFanMode(device, mode) {
+    return this.setThermostatFanMode(device.mac, device.product_model, mode);
+  }
+
+  async thermostatScenario(device, scenario) {
+    return this.setThermostatScenario(device.mac, device.product_model, scenario);
+  }
+
+  async thermostatHeatingSetpoint(device, value) {
+    return this.setThermostatHeatingSetpoint(device.mac, device.product_model, value);
+  }
+
+  async thermostatCoolingSetpoint(device, value) {
+    return this.setThermostatCoolingSetpoint(device.mac, device.product_model, value);
+  }
+
+  async thermostatTemperature(device, coolingSetpoint, heatingSetpoint) {
+    return this.setThermostatTemperature(device.mac, device.product_model, coolingSetpoint, heatingSetpoint);
+  }
+
+  async thermostatLock(device, locked) {
+    return this.setThermostatLock(device.mac, device.product_model, locked);
+  }
+
+  async thermostatComfortBalance(device, mode) {
+    return this.setThermostatComfortBalance(device.mac, device.product_model, mode);
+  }
+
+  async thermostatHold(device, until) {
+    return this.holdThermostat(device.mac, device.product_model, until);
+  }
+
+  async thermostatClearHold(device) {
+    return this.clearThermostatHold(device.mac, device.product_model);
   }
 
     // Construct the characteristics object
@@ -1518,7 +1816,6 @@ module.exports = class WyzeAPI {
   // and the signed body is the no-whitespace JSON.stringify of that payload.
   // For GET: `nonce` (number) is added to params; the signed body is the
   // sorted "k=v&k=v" param string (raw values, no URL encoding).
-  // Reference: wyze-sdk WpkNetServiceClient and VenusServiceClient.
 
   _venusBuildHeaders(nonce, signature) {
     return {
@@ -1638,7 +1935,6 @@ module.exports = class WyzeAPI {
   /**
    * Combined snapshot of a vacuum: list entry merged with live IoT props,
    * device info, status (event/heartbeat), current position, and current map.
-   * Mirrors wyze-sdk's `info(device_mac)`.
    *
    * Returns `null` if the mac is not a vacuum on this account. Failures of
    * individual sub-fetches are logged and the corresponding fields are left
@@ -1905,6 +2201,178 @@ module.exports = class WyzeAPI {
     return await this.getPropertyList(deviceMac, deviceModel);
   }
 
+  /**
+   * Generic device-info read — wraps `app/v2/device/get_device_Info`. Returns
+   * the device's per-model settings and current state. Useful for any
+   * family that doesn't have a dedicated info-reader.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   */
+  async getDeviceInfo(deviceMac, deviceModel) {
+    const data = { device_mac: deviceMac, device_model: deviceModel };
+    const result = await this.request("app/v2/device/get_device_Info", data);
+    return result.data;
+  }
+
+  // Sensors — Wyze Sense contact (DWS3U/DWS2U) and motion (PIR3U/PIR2U).
+  // Read-only family; state changes are reported by the device, not pushed.
+
+  /**
+   * Filter device list to contact sensors.
+   */
+  async getContactSensorList() {
+    const devices = await this.getDeviceList();
+    return devices.filter((d) => types.DeviceModels.CONTACT_SENSOR.includes(d.product_model));
+  }
+
+  /**
+   * Single contact-sensor lookup by mac.
+   */
+  async getContactSensor(mac) {
+    const sensors = await this.getContactSensorList();
+    return sensors.find((d) => d.mac === mac);
+  }
+
+  /**
+   * Combined: list entry + device-info merge for a contact sensor.
+   */
+  async getContactSensorInfo(mac) {
+    const sensor = await this.getContactSensor(mac);
+    if (!sensor) return null;
+    const result = { ...sensor };
+    try {
+      const info = await this.getDeviceInfo(sensor.mac, sensor.product_model);
+      if (info?.data) Object.assign(result, info.data);
+    } catch (err) {
+      this.log.warning(`getContactSensorInfo: device_info failed: ${err.message}`);
+    }
+    return result;
+  }
+
+  /**
+   * Filter device list to motion sensors.
+   */
+  async getMotionSensorList() {
+    const devices = await this.getDeviceList();
+    return devices.filter((d) => types.DeviceModels.MOTION_SENSOR.includes(d.product_model));
+  }
+
+  async getMotionSensor(mac) {
+    const sensors = await this.getMotionSensorList();
+    return sensors.find((d) => d.mac === mac);
+  }
+
+  async getMotionSensorInfo(mac) {
+    const sensor = await this.getMotionSensor(mac);
+    if (!sensor) return null;
+    const result = { ...sensor };
+    try {
+      const info = await this.getDeviceInfo(sensor.mac, sensor.product_model);
+      if (info?.data) Object.assign(result, info.data);
+    } catch (err) {
+      this.log.warning(`getMotionSensorInfo: device_info failed: ${err.message}`);
+    }
+    return result;
+  }
+
+  // Pure sensor accessors — expect a merged sensor info object (from
+  // getContactSensorInfo / getMotionSensorInfo). Return null when the
+  // expected field isn't present.
+
+  // Cross-cutting pure accessors. Operate on any device object that comes
+  // out of the API (or any *info object that merges device_params into the
+  // top level). All return null when the field isn't present, never throw.
+
+  /**
+   * Best-effort battery reading. Tries the keys different families use,
+   * returns the first defined one (already-percent or already-normalized
+   * by the device — caller may want to clamp 0-100 with clamp()).
+   */
+  deviceGetBattery(device) {
+    const dp = device?.device_params ?? {};
+    return (
+      device?.battary ?? dp.battary ?? // vacuum typo, server-side
+      dp.power ??                       // some cameras
+      dp.electricity ??                 // mesh/plug power monitoring
+      dp.battery ??                     // generic
+      dp.voltage ??                     // sensors / locks
+      null
+    );
+  }
+
+  /**
+   * Online state — checks family-specific fields in priority order.
+   */
+  deviceIsOnline(device) {
+    if (device?.conn_state !== undefined) return device.conn_state === 1;
+    if (device?.device_params?.status !== undefined) return device.device_params.status === 1;
+    if (device?.is_online !== undefined) return Boolean(device.is_online);
+    if (device?.device_params?.iot_state !== undefined) return device.device_params.iot_state === 1;
+    return null;
+  }
+
+  /**
+   * Wi-Fi signal strength. Returns the family-specific RSSI/signal_strength
+   * value or null.
+   */
+  deviceGetSignalStrength(device) {
+    const dp = device?.device_params ?? {};
+    return dp.signal_strength ?? dp.rssi ?? device?.rssi ?? null;
+  }
+
+  deviceGetIp(device) {
+    const dp = device?.device_params ?? {};
+    return dp.ip ?? dp.ipaddr ?? device?.ip ?? device?.ipaddr ?? null;
+  }
+
+  deviceGetFirmware(device) {
+    return device?.firmware_ver ?? device?.device_params?.firmware_ver ?? null;
+  }
+
+  deviceGetMcuFirmware(device) {
+    return device?.device_params?.mcu_sys_version ?? device?.mcu_sys_version ?? null;
+  }
+
+  deviceGetTimezone(device) {
+    return device?.timezone_name ?? device?.device_params?.timezone_name ?? null;
+  }
+
+  deviceGetLastSeen(device) {
+    const ts = device?.device_params?.last_login_time ?? device?.last_login_time;
+    return typeof ts === "number" ? new Date(ts) : null;
+  }
+
+  /**
+   * Apply the configured low-battery threshold. Convenience over
+   * checkLowBattery + deviceGetBattery.
+   * @returns {boolean} true if battery is at or below `lowBatteryPercentage`
+   */
+  deviceIsLowBattery(device) {
+    const v = this.deviceGetBattery(device);
+    if (typeof v !== "number") return false;
+    return v <= this.lowBatteryPercentage;
+  }
+
+  contactSensorIsOpen(info) {
+    const v = info?.device_params?.open_close_state;
+    if (typeof v === "number") return v === 1;
+    return null;
+  }
+
+  motionSensorIsMotion(info) {
+    const v = info?.device_params?.motion_state;
+    if (typeof v === "number") return v === 1;
+    return null;
+  }
+
+  sensorBatteryVoltage(info) {
+    return info?.device_params?.voltage ?? null;
+  }
+
+  sensorRssi(info) {
+    return info?.device_params?.rssi ?? null;
+  }
+
   async cameraPrivacy(deviceMac, deviceModel, value) {
     await this.runAction(deviceMac, deviceModel, value);
   }
@@ -1915,6 +2383,13 @@ module.exports = class WyzeAPI {
 
   async cameraTurnOff(deviceMac, deviceModel) {
     await this.runAction(deviceMac, deviceModel, "power_off");
+  }
+
+  /**
+   * Restart a camera. Same wire as `runAction(mac, model, "restart")`.
+   */
+  async cameraRestart(deviceMac, deviceModel) {
+    return this.runAction(deviceMac, deviceModel, "restart");
   }
 
   /**
@@ -2095,31 +2570,32 @@ module.exports = class WyzeAPI {
   }
 
   /**
-   * Send a signed POST to the Ford lock service.
+   * Send a signed POST (or PUT/PATCH) to the Ford lock service.
    * @param {string} urlPath
    * @param {Object} params — raw payload (auth + sign are added)
+   * @param {string} [method="post"] — http verb; signed body uses this verb
    */
-  async _fordPost(urlPath, params = {}) {
+  async _fordPost(urlPath, params = {}, method = "post") {
     await this.maybeLogin();
     const signedPayload = payloadFactory.fordCreatePayload(
       this.access_token,
       params,
       urlPath,
-      "post"
+      method
     );
     const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
     if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
     try {
-      const result = await axios.post(url, signedPayload);
+      const result = await axios.request({ url, method, data: signedPayload });
       if (this.apiLogEnabled) {
-        this.log.info(`API response Ford POST ${urlPath}: ${JSON.stringify(result.data)}`);
+        this.log.info(`API response Ford ${method.toUpperCase()} ${urlPath}: ${JSON.stringify(result.data)}`);
       }
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);
       if (e.response) {
         this.log.error(
-          `Response Ford POST ${urlPath} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+          `Response Ford ${method.toUpperCase()} ${urlPath} (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
         );
       }
       throw e;
@@ -2232,9 +2708,187 @@ module.exports = class WyzeAPI {
   }
 
   /**
+   * Build a JSON-ready LockKeyPermission object (the wire shape expected by
+   * add/update access code calls).
+   *
+   * Per type:
+   *   - ALWAYS    (1): no time bounds
+   *   - DURATION  (2): begin/end (epoch seconds, inclusive)
+   *   - ONCE      (3): begin/end (single window)
+   *   - RECURRING (4): begin/end forced to 0; pair with a periodicity object
+   *
+   * @param {number} type — see WyzeAPI.LockKeyPermissionType
+   * @param {Date|number} [begin] — Date or epoch seconds
+   * @param {Date|number} [end]
+   */
+  buildLockKeyPermission(type, begin, end) {
+    if (!Object.values(types.LockKeyPermissionType).includes(type)) {
+      throw new Error(`buildLockKeyPermission: invalid type ${type}`);
+    }
+    const out = { status: type };
+    const toEpochSec = (v) => {
+      if (v == null) return null;
+      if (v instanceof Date) return Math.floor(v.getTime() / 1000);
+      if (typeof v === "number") return Math.floor(v);
+      throw new Error("buildLockKeyPermission: begin/end must be Date or epoch seconds");
+    };
+    if (type === types.LockKeyPermissionType.RECURRING) {
+      out.begin = 0;
+      out.end = 0;
+    } else if (
+      type === types.LockKeyPermissionType.DURATION ||
+      type === types.LockKeyPermissionType.ONCE
+    ) {
+      const b = toEpochSec(begin);
+      const e = toEpochSec(end);
+      if (b !== null) out.begin = b;
+      if (e !== null) out.end = e;
+    }
+    return out;
+  }
+
+  /**
+   * Build a JSON-ready LockKeyPeriodicity object for RECURRING access codes.
+   * @param {Object} options
+   * @param {string|Date} options.begin — "HHMMSS" string or Date (time-of-day)
+   * @param {string|Date} options.end
+   * @param {number[]} options.validDays — day-of-week numbers (1=Mon..7=Sun, per Wyze app)
+   */
+  buildLockKeyPeriodicity({ begin, end, validDays }) {
+    const fmt = (v) => {
+      if (typeof v === "string") {
+        if (!/^\d{6}$/.test(v)) throw new Error("buildLockKeyPeriodicity: time must be HHMMSS");
+        return v;
+      }
+      if (v instanceof Date) {
+        const pad = (n) => String(n).padStart(2, "0");
+        return `${pad(v.getHours())}${pad(v.getMinutes())}00`;
+      }
+      throw new Error("buildLockKeyPeriodicity: time must be Date or HHMMSS string");
+    };
+    if (!Array.isArray(validDays) || validDays.length === 0) {
+      throw new Error("buildLockKeyPeriodicity: validDays must be a non-empty array");
+    }
+    return {
+      type: 2,
+      interval: 1,
+      begin: fmt(begin),
+      end: fmt(end),
+      valid_days: validDays,
+    };
+  }
+
+  /**
+   * Create a guest access code on a lock. The code is encrypted in transit
+   * with the lock's crypt secret (fetched from `getLockCryptSecret()`).
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} options
+   * @param {string} options.accessCode — 4–8 digit numeric PIN
+   * @param {string} [options.name] — guest name
+   * @param {string} options.userId — user id of the lock owner (required)
+   * @param {Object} [options.permission] — from `buildLockKeyPermission()`. Defaults to ALWAYS.
+   * @param {Object} [options.periodicity] — from `buildLockKeyPeriodicity()`. Required when permission.type is RECURRING.
+   */
+  async addLockAccessCode(deviceMac, deviceModel, options) {
+    const { accessCode, name, userId, permission, periodicity } = options;
+    if (!/^\d{4,8}$/.test(String(accessCode))) {
+      throw new Error("addLockAccessCode: accessCode must be 4–8 digits");
+    }
+    if (!userId) throw new Error("addLockAccessCode: userId is required");
+
+    const perm = permission ?? this.buildLockKeyPermission(types.LockKeyPermissionType.ALWAYS);
+    if (perm.status === types.LockKeyPermissionType.RECURRING && !periodicity) {
+      throw new Error("addLockAccessCode: periodicity is required when permission.type is RECURRING");
+    }
+
+    const secretResp = await this.getLockCryptSecret();
+    const secret = secretResp?.secret;
+    if (!secret) throw new Error("addLockAccessCode: failed to fetch crypt secret");
+
+    const params = {
+      uuid: this.getUuid(deviceMac, deviceModel),
+      userid: userId,
+      password: crypto.encryptLockAccessCode(accessCode, secret),
+      permission: JSON.stringify(perm),
+    };
+    if (name) params.name = name;
+    if (periodicity) params.period_info = JSON.stringify(periodicity);
+
+    return this._fordPost("/openapi/lock/v1/pwd/operations/add", params);
+  }
+
+  /**
+   * Update an existing access code on a lock.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Object} options
+   * @param {number|string} options.accessCodeId
+   * @param {string} [options.accessCode] — new PIN (if changing)
+   * @param {string} [options.name]
+   * @param {Object} options.permission — required (use buildLockKeyPermission)
+   * @param {Object} [options.periodicity]
+   */
+  async updateLockAccessCode(deviceMac, deviceModel, options) {
+    const { accessCodeId, accessCode, name, permission, periodicity } = options;
+    if (accessCodeId == null) throw new Error("updateLockAccessCode: accessCodeId is required");
+    if (!permission) throw new Error("updateLockAccessCode: permission is required");
+    if (permission.status === types.LockKeyPermissionType.RECURRING && !periodicity) {
+      throw new Error("updateLockAccessCode: periodicity is required when permission.type is RECURRING");
+    }
+
+    const params = {
+      uuid: this.getUuid(deviceMac, deviceModel),
+      passwordid: String(accessCodeId),
+      permission: JSON.stringify(permission),
+    };
+    if (accessCode != null) {
+      if (!/^\d{4,8}$/.test(String(accessCode))) {
+        throw new Error("updateLockAccessCode: accessCode must be 4–8 digits");
+      }
+      const secretResp = await this.getLockCryptSecret();
+      const secret = secretResp?.secret;
+      if (!secret) throw new Error("updateLockAccessCode: failed to fetch crypt secret");
+      params.password = crypto.encryptLockAccessCode(accessCode, secret);
+    }
+    if (name) params.name = name;
+    if (periodicity) params.period_info = JSON.stringify(periodicity);
+
+    return this._fordPost("/openapi/lock/v1/pwd/operations/update", params);
+  }
+
+  /**
+   * Delete an access code by id.
+   */
+  async deleteLockAccessCode(deviceMac, deviceModel, accessCodeId) {
+    if (accessCodeId == null) throw new Error("deleteLockAccessCode: accessCodeId is required");
+    return this._fordPost("/openapi/lock/v1/pwd/operations/delete", {
+      uuid: this.getUuid(deviceMac, deviceModel),
+      passwordid: String(accessCodeId),
+    });
+  }
+
+  /**
+   * Rename an access code. Uses HTTP PUT (not POST) per the Wyze API.
+   */
+  async renameLockAccessCode(deviceMac, deviceModel, accessCodeId, nickname) {
+    if (accessCodeId == null) throw new Error("renameLockAccessCode: accessCodeId is required");
+    if (!nickname) throw new Error("renameLockAccessCode: nickname is required");
+    return this._fordPost(
+      "/openapi/lock/v1/pwd/nickname",
+      {
+        uuid: this.getUuid(deviceMac, deviceModel),
+        passwordid: String(accessCodeId),
+        nickname,
+      },
+      "put"
+    );
+  }
+
+  /**
    * Combined snapshot of a lock — list entry + lock info + crypt secret +
-   * record count. Mirrors wyze-sdk's `LocksClient.info()`. Tolerates
-   * partial sub-fetch failures.
+   * record count. Tolerates partial sub-fetch failures.
    *
    * @param {string} mac
    * @returns {Promise<Object|null>}
@@ -3134,6 +3788,55 @@ module.exports = class WyzeAPI {
     await this.setProperty(deviceMac, deviceModel, PIDs.ON, "0");
   }
 
+  /**
+   * Schedule the plug to turn on after `delaySeconds`.
+   */
+  async plugTurnOnAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
+  }
+
+  /**
+   * Schedule the plug to turn off after `delaySeconds`.
+   */
+  async plugTurnOffAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
+  }
+
+  /**
+   * Cancel any pending plug timer.
+   */
+  async clearPlugTimer(deviceMac) {
+    return this.cancelDeviceTimer(deviceMac);
+  }
+
+  /**
+   * Read the plug's active on/off timer (if any).
+   */
+  async getPlugTimer(deviceMac) {
+    return this.getDeviceTimer(deviceMac);
+  }
+
+  /**
+   * Energy usage records for a plug between two times.
+   * @param {string} deviceMac
+   * @param {Object} options
+   * @param {Date|number} options.startTime
+   * @param {Date|number} [options.endTime] — defaults to now
+   */
+  async getPlugUsageRecords(deviceMac, options = {}) {
+    const { startTime, endTime = Date.now() } = options;
+    if (startTime == null) {
+      throw new Error("getPlugUsageRecords: `startTime` is required");
+    }
+    const data = {
+      device_mac: deviceMac,
+      date_begin: startTime instanceof Date ? startTime.getTime() : startTime,
+      date_end: endTime instanceof Date ? endTime.getTime() : endTime,
+    };
+    const result = await this.request("app/v2/plug/usage_record_list", data);
+    return result.data;
+  }
+
   //WyzeLight
   /**
    * Turn Light Bulb 0 = off or 1 = on
@@ -3153,12 +3856,209 @@ module.exports = class WyzeAPI {
     await this.setProperty(deviceMac, deviceModel, PIDs.ON, "0");
   }
 
+  async lightTurnOnAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
+  }
+
+  async lightTurnOffAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
+  }
+
+  async clearLightTimer(deviceMac) {
+    return this.cancelDeviceTimer(deviceMac);
+  }
+
+  // Convenience aliases — bulb-named timers (same wire as light timers).
+  async bulbTurnOnAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
+  }
+
+  async bulbTurnOffAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
+  }
+
+  async clearBulbTimer(deviceMac) {
+    return this.cancelDeviceTimer(deviceMac);
+  }
+
   async setBrightness(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, PIDs.BRIGHTNESS, value);
   }
 
   async setColorTemperature(deviceMac, deviceModel, value) {
     await this.setProperty(deviceMac, deviceModel, PIDs.COLOR_TEMP, value);
+  }
+
+  // Bulb / light lookup + feature setters. Power, brightness, color temp, hue/sat
+  // already live above (lightTurnOn/Off, setBrightness, setColorTemperature,
+  // lightMesh*, setMeshHue/Saturation).
+
+  /**
+   * Filter the device list down to bulbs/lights/strips (any product_model in
+   * DeviceModels.BULB — covers white, mesh-color, and light strips).
+   */
+  async getBulbDeviceList() {
+    const devices = await this.getDeviceList();
+    return devices.filter((d) => types.DeviceModels.BULB.includes(d.product_model));
+  }
+
+  /**
+   * Look up a single bulb by mac.
+   * @param {string} mac
+   */
+  async getBulb(mac) {
+    const bulbs = await this.getBulbDeviceList();
+    return bulbs.find((d) => d.mac === mac);
+  }
+
+  /**
+   * Combined snapshot of a bulb — list entry merged with its property list.
+   * Tolerates a missing property list (logs a warning, returns the
+   * list-entry alone).
+   *
+   * @param {string} mac
+   * @returns {Promise<Object|null>}
+   */
+  async getBulbInfo(mac) {
+    const bulb = await this.getBulb(mac);
+    if (!bulb) return null;
+
+    const result = { ...bulb };
+    try {
+      const props = await this.getDevicePID(bulb.mac, bulb.product_model);
+      if (props?.data?.property_list) {
+        for (const p of props.data.property_list) {
+          if (p?.pid) result[p.pid] = p.value;
+        }
+      }
+    } catch (err) {
+      this.log.warning(`getBulbInfo: property list failed: ${err.message}`);
+    }
+    return result;
+  }
+
+  /**
+   * Toggle Sun Match — bulb mimics natural sunlight color temperature
+   * throughout the day. P1528 = "1" (on) / "0" (off).
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {boolean} enabled
+   */
+  async setBulbSunMatch(deviceMac, deviceModel, enabled) {
+    return this.setProperty(deviceMac, deviceModel, PIDs.SUN_MATCH, enabled ? "1" : "0");
+  }
+
+  /**
+   * Set what the bulb does after a power outage — turn back on, or restore
+   * the previous on/off state. P1509 with `LightPowerLossRecoveryMode`.
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {number} mode — see `WyzeAPI.LightPowerLossRecoveryMode` (POWER_ON=0, RESTORE_PREVIOUS_STATE=1)
+   */
+  async setBulbPowerLossRecovery(deviceMac, deviceModel, mode) {
+    return this.setProperty(deviceMac, deviceModel, PIDs.POWER_LOSS_RECOVERY, String(mode));
+  }
+
+  /**
+   * Disable away mode on a bulb. P1506 = "0".
+   *
+   * NOTE: only the OFF path is implemented. Enabling away mode requires a
+   * generated `switch_rule` action with a randomized rule object (so the
+   * lights mimic a lived-in home pattern); shipping a guess for that rule
+   * could leave a real user with broken away-mode behavior. Tracking
+   * separately.
+   */
+  async setBulbAwayModeOff(deviceMac, deviceModel) {
+    return this.setProperty(deviceMac, deviceModel, PIDs.AWAY_MODE, "0");
+  }
+
+  /**
+   * Set a HEX color on a mesh bulb / color light strip. Writes the HEX to
+   * P1507 and, for light strips, also flips the control mode to COLOR via
+   * P1508 so the strip switches into solid-color mode.
+   *
+   * For Light Strip Pro per-subsection colors (16 sections), use the more
+   * specific composite call (deferred — needs P1518 subsection wire format).
+   *
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {string} hex — e.g. `"FF5733"` (case-insensitive, no `#`)
+   */
+  async setBulbColor(deviceMac, deviceModel, hex) {
+    if (typeof hex !== "string" || !/^[0-9a-fA-F]{6}$/.test(hex)) {
+      throw new Error(`setBulbColor: ${JSON.stringify(hex)} is not a 6-char HEX color`);
+    }
+    if (!types.DeviceModels.MESH_BULB.includes(deviceModel)) {
+      throw new Error(`setBulbColor: ${deviceModel} does not support color`);
+    }
+    const color = hex.toUpperCase();
+    await this.runActionList(deviceMac, deviceModel, PIDs.COLOR, color, "set_mesh_property");
+    if (types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+      await this.runActionList(
+        deviceMac,
+        deviceModel,
+        PIDs.CONTROL_LIGHT,
+        types.LightControlMode.COLOR,
+        "set_mesh_property"
+      );
+    }
+  }
+
+  /**
+   * Set color temperature, with strip-aware control-mode flip.
+   * Writes P1502 and (for light strips) flips P1508 to TEMPERATURE so a
+   * strip currently in COLOR or FRAGMENTED mode switches to white-CCT.
+   */
+  async setBulbColorTemperature(deviceMac, deviceModel, value) {
+    if (types.DeviceModels.MESH_BULB.includes(deviceModel)) {
+      await this.runActionList(deviceMac, deviceModel, PIDs.COLOR_TEMP, value, "set_mesh_property");
+      if (types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+        await this.runActionList(
+          deviceMac,
+          deviceModel,
+          PIDs.CONTROL_LIGHT,
+          types.LightControlMode.TEMPERATURE,
+          "set_mesh_property"
+        );
+      }
+      return;
+    }
+    return this.setProperty(deviceMac, deviceModel, PIDs.COLOR_TEMP, value);
+  }
+
+  // Bulb device-object helpers (homebridge-style — accept a device object).
+
+  async bulbInfo(device) {
+    return this.getBulbInfo(device.mac);
+  }
+
+  async bulbSunMatch(device, enabled) {
+    return this.setBulbSunMatch(device.mac, device.product_model, enabled);
+  }
+
+  async bulbSunMatchOn(device) {
+    return this.setBulbSunMatch(device.mac, device.product_model, true);
+  }
+
+  async bulbSunMatchOff(device) {
+    return this.setBulbSunMatch(device.mac, device.product_model, false);
+  }
+
+  async bulbPowerLossRecovery(device, mode) {
+    return this.setBulbPowerLossRecovery(device.mac, device.product_model, mode);
+  }
+
+  async bulbColor(device, hex) {
+    return this.setBulbColor(device.mac, device.product_model, hex);
+  }
+
+  async bulbColorTemperature(device, value) {
+    return this.setBulbColorTemperature(device.mac, device.product_model, value);
+  }
+
+  async bulbAwayModeOff(device) {
+    return this.setBulbAwayModeOff(device.mac, device.product_model);
   }
 
   /**
@@ -3298,6 +4198,19 @@ module.exports = class WyzeAPI {
   async wallSwitchPowerOff(deviceMac, deviceModel) {
     await this.setIotProp(deviceMac, deviceModel, "switch-power", false);
   }
+
+  async wallSwitchPowerOnAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
+  }
+
+  async wallSwitchPowerOffAfter(deviceMac, delaySeconds) {
+    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
+  }
+
+  async clearWallSwitchTimer(deviceMac) {
+    return this.cancelDeviceTimer(deviceMac);
+  }
+
   /**
    *
    * @param {string} deviceMac
@@ -3340,6 +4253,35 @@ module.exports = class WyzeAPI {
    */
   async wallSwitchVacationModeOff(deviceMac, deviceModel) {
     await this.setIotProp(deviceMac, deviceModel, "vacation_mode", 1);
+  }
+
+  // Wall-switch press-type customization. The smart wall switch can route
+  // single/double/triple/long-press to different IoT actions independently
+  // of the load. Each prop takes an integer action id; the master toggle
+  // `additional_interaction_switch` controls whether the press handlers run.
+
+  async setWallSwitchSinglePressType(deviceMac, deviceModel, value) {
+    return this.setIotProp(deviceMac, deviceModel, "single_press_type", value);
+  }
+
+  async setWallSwitchDoublePressType(deviceMac, deviceModel, value) {
+    return this.setIotProp(deviceMac, deviceModel, "double_press_type", value);
+  }
+
+  async setWallSwitchTriplePressType(deviceMac, deviceModel, value) {
+    return this.setIotProp(deviceMac, deviceModel, "triple_press_type", value);
+  }
+
+  async setWallSwitchLongPressType(deviceMac, deviceModel, value) {
+    return this.setIotProp(deviceMac, deviceModel, "long_press_type", value);
+  }
+
+  /**
+   * Master toggle for press-type customization. When false, single/double/
+   * triple/long-press fall back to the default load-switching behavior.
+   */
+  async setWallSwitchPressTypesEnabled(deviceMac, deviceModel, enabled) {
+    return this.setIotProp(deviceMac, deviceModel, "additional_interaction_switch", Boolean(enabled));
   }
 
   async getHmsID() {
@@ -3633,3 +4575,15 @@ module.exports.LockKeyState = types.LockKeyState;
 module.exports.LockKeyOperation = types.LockKeyOperation;
 module.exports.LockKeyOperationStage = types.LockKeyOperationStage;
 module.exports.LockKeyPermissionType = types.LockKeyPermissionType;
+module.exports.LightControlMode = types.LightControlMode;
+module.exports.LightPowerLossRecoveryMode = types.LightPowerLossRecoveryMode;
+module.exports.ThermostatSystemMode = types.ThermostatSystemMode;
+module.exports.ThermostatFanMode = types.ThermostatFanMode;
+module.exports.ThermostatScenarioType = types.ThermostatScenarioType;
+module.exports.ThermostatWorkingState = types.ThermostatWorkingState;
+module.exports.ThermostatTempUnit = types.ThermostatTempUnit;
+module.exports.ThermostatComfortBalanceMode = types.ThermostatComfortBalanceMode;
+module.exports.ThermostatComfortBalanceDescription = types.ThermostatComfortBalanceDescription;
+module.exports.RoomSensorBatteryLevel = types.RoomSensorBatteryLevel;
+module.exports.RoomSensorStatusType = types.RoomSensorStatusType;
+module.exports.RoomSensorStateType = types.RoomSensorStateType;

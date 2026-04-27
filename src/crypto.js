@@ -88,8 +88,20 @@ function iot3CreateSignature(bodyStr, access_token) {
     return crypto.createHmac("md5", secret).update(bodyStr).digest("hex");
 }
 
-// Venus / WpkNet signing scheme.
-// See wyze_sdk.signature.RequestVerifier.generate_dynamic_signature:
+// Encrypt a lock access code (PIN) for transport to the Ford service.
+// AES-128-CBC with:
+//   IV  = ASCII bytes of the literal string "0123456789ABCDEF"
+//   key = md5 raw bytes of the lock's crypt_secret (from getLockCryptSecret)
+// PKCS#7 padding (Node's default for createCipheriv with aes-128-cbc).
+// Result is the ciphertext hex string the API expects in the `password` field.
+function encryptLockAccessCode(plaintext, secret) {
+    const iv = Buffer.from("0123456789ABCDEF", "utf8");
+    const key = crypto.createHash("md5").update(secret).digest();
+    const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+    return Buffer.concat([cipher.update(String(plaintext), "utf8"), cipher.final()]).toString("hex");
+}
+
+// Venus dynamic signature.
 //   key  = md5(access_token + signing_secret)
 //   sig  = hmac_md5(key, body).hexdigest()
 // `body` is the JSON-stringified payload for POST (with `nonce` injected),
@@ -134,4 +146,5 @@ module.exports = {
     web_create_signature,
     venusGenerateDynamicSignature,
     venusRequestId,
+    encryptLockAccessCode,
 }
