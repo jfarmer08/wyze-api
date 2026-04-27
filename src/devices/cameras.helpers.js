@@ -5,6 +5,7 @@ const {
   startRtpForwarding,
   pickFreeUdpPort,
   writeSdpFile,
+  writeAudioSdpFile,
   resolveFfmpegPath,
   localIpAddress,
 } = require("./cameraStreamCapture");
@@ -295,14 +296,16 @@ module.exports = {
    * Returns `{ stop() }` — call stop() when the stream ends.
    */
   async cameraStartRtpForwarding(deviceMac, deviceModel, localRtpPort, options = {}) {
+    const { localAudioRtpPort, ...rest } = options;
     const conn = await this.getCameraWebRTCConnectionInfo(deviceMac, deviceModel, {
-      ...options,
+      ...rest,
       noCache: true,
     });
     return startRtpForwarding({
       signalingUrl: conn.signalingUrl,
       iceServers: conn.iceServers,
       localRtpPort,
+      localAudioRtpPort,
       logger: this.apiLogEnabled ? this.log : null,
     });
   },
@@ -312,80 +315,149 @@ module.exports = {
    * Call once per prepareStream, then pass the result into startCameraHKStream.
    */
   async prepareCameraHKStream() {
-    const localRtpPort = await pickFreeUdpPort();
+    const [localRtpPort, localAudioRtpPort] = await Promise.all([pickFreeUdpPort(), pickFreeUdpPort()]);
     const videoSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
+    const audioSsrc = nodeCrypto.randomBytes(4).readUInt32BE(0);
     const localAddress = localIpAddress();
-    return { localRtpPort, videoSsrc, localAddress };
+    return { localRtpPort, localAudioRtpPort, videoSsrc, audioSsrc, localAddress };
   },
 
   /**
-   * Start a HomeKit SRTP video stream for a camera.
-   * Connects WebRTC, forwards RTP locally, then bridges to HomeKit via FFmpeg SRTP.
-   * Returns { stop() } — call stop() when the stream ends.
-   *
-   * @param {string} deviceMac
-   * @param {string} deviceModel
-   * @param {Object} opts
-   * @param {number} opts.localRtpPort      — from prepareCameraHKStream
-   * @param {string} opts.targetAddress     — HomeKit client IP
-   * @param {number} opts.videoPort         — HomeKit RTP port
-   * @param {number} opts.rtcpPort          — HomeKit RTCP port
-   * @param {Buffer} opts.srtpKey           — 16-byte SRTP key from HomeKit
-   * @param {Buffer} opts.srtpSalt          — 14-byte SRTP salt from HomeKit
-   * @param {number} opts.videoSsrc         — from prepareCameraHKStream
-   * @param {number} [opts.bitrate=300]     — max kbps
-   * @param {Object} [opts.logger]          — optional logger
+   * Start a HomeKit SRTP video+audio stream for a camera.
+   * Connects WebRTC, forwards RTP locally, bridges to HomeKit via FFmpeg SRTP.
+   * Automatically reconnects (up to 3 times) if the stream drops unexpectedly.
+   * Returns { stop() } — call stop() to tear everything down.
    */
   async startCameraHKStream(deviceMac, deviceModel, {
     localRtpPort,
+    localAudioRtpPort = null,
     targetAddress,
     videoPort,
     rtcpPort,
     srtpKey,
     srtpSalt,
     videoSsrc,
+    audioPort = null,
+    audioRtcpPort = null,
+    audioSrtpKey = null,
+    audioSrtpSalt = null,
+    audioSsrc = null,
     bitrate = 300,
     logger = null,
   }) {
-    const rtpForwarder = await this.cameraStartRtpForwarding(deviceMac, deviceModel, localRtpPort);
-    const sdpPath = writeSdpFile(localRtpPort);
-    const srtpOutParams = Buffer.concat([srtpKey, srtpSalt]).toString("base64");
-    const cappedBitrate = Math.min(bitrate, 2000);
-
-    const ffmpeg = spawn(resolveFfmpegPath(), [
-      "-loglevel", "warning",
-      "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
-      "-fflags", "+genpts+nobuffer",
-      "-flags", "low_delay",
-      "-i", sdpPath,
-      "-c:v", "copy",
-      "-b:v", `${cappedBitrate}k`,
-      "-payload_type", "99",
-      "-ssrc", String(videoSsrc),
-      "-f", "rtp",
-      "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
-      "-srtp_out_params", srtpOutParams,
-      `srtp://${targetAddress}:${videoPort}?rtcpport=${rtcpPort}&pkt_size=1316`,
-    ], { stdio: ["ignore", "pipe", "pipe"] });
-
-    if (logger) {
-      ffmpeg.stderr.on("data", (chunk) => {
-        if (typeof logger.debug === "function")
-          logger.debug(`[stream] [ffmpeg] ${chunk.toString().trimEnd()}`);
-      });
-    }
-    ffmpeg.once("close", (code) => {
-      if (code && code !== 0 && logger && typeof logger.warn === "function")
-        logger.warn(`[stream] FFmpeg exited (${code})`);
-    });
-
-    const stop = () => {
-      try { ffmpeg.kill("SIGKILL"); } catch (_) {}
-      try { rtpForwarder.stop(); } catch (_) {}
-      try { fs.unlinkSync(sdpPath); } catch (_) {}
+    const log = (level, msg) => {
+      if (logger && typeof logger[level] === "function") logger[level](msg);
     };
 
-    return { stop };
+    const MAX_RETRIES = 3;
+    let stopped = false;
+    let retries = 0;
+
+    // Current-attempt resources
+    let forwarder = null;
+    let videoFfmpeg = null;
+    let audioFfmpeg = null;
+    let videoSdpPath = null;
+    let audioSdpPath = null;
+
+    const cleanup = () => {
+      try { videoFfmpeg?.kill("SIGKILL"); } catch (_) {}
+      try { audioFfmpeg?.kill("SIGKILL"); } catch (_) {}
+      try { forwarder?.stop(); } catch (_) {}
+      try { if (videoSdpPath) fs.unlinkSync(videoSdpPath); } catch (_) {}
+      try { if (audioSdpPath) fs.unlinkSync(audioSdpPath); } catch (_) {}
+      forwarder = videoFfmpeg = audioFfmpeg = null;
+      videoSdpPath = audioSdpPath = null;
+    };
+
+    const attempt = async () => {
+      forwarder = await this.cameraStartRtpForwarding(
+        deviceMac, deviceModel, localRtpPort,
+        localAudioRtpPort ? { localAudioRtpPort } : {}
+      );
+
+      // Video stream
+      videoSdpPath = writeSdpFile(localRtpPort);
+      const videoSrtpParams = Buffer.concat([srtpKey, srtpSalt]).toString("base64");
+
+      videoFfmpeg = spawn(resolveFfmpegPath(), [
+        "-loglevel", "warning",
+        "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
+        "-fflags", "+genpts+nobuffer",
+        "-flags", "low_delay",
+        "-i", videoSdpPath,
+        "-c:v", "copy",
+        "-payload_type", "99",
+        "-ssrc", String(videoSsrc),
+        "-f", "rtp",
+        "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
+        "-srtp_out_params", videoSrtpParams,
+        `srtp://${targetAddress}:${videoPort}?rtcpport=${rtcpPort}&pkt_size=1316`,
+      ], { stdio: ["ignore", "pipe", "pipe"] });
+
+      if (logger) {
+        videoFfmpeg.stderr.on("data", (chunk) =>
+          log("debug", `[stream] [ffmpeg/video] ${chunk.toString().trimEnd()}`)
+        );
+      }
+
+      // Audio stream (optional — only if HomeKit provided audio params)
+      if (localAudioRtpPort && audioPort && audioSrtpKey && audioSrtpSalt) {
+        audioSdpPath = writeAudioSdpFile(localAudioRtpPort);
+        const audioSrtpParams = Buffer.concat([audioSrtpKey, audioSrtpSalt]).toString("base64");
+
+        audioFfmpeg = spawn(resolveFfmpegPath(), [
+          "-loglevel", "warning",
+          "-protocol_whitelist", "file,rtp,udp,srtp,crypto",
+          "-fflags", "+genpts+nobuffer",
+          "-flags", "low_delay",
+          "-i", audioSdpPath,
+          "-c:a", "libopus",
+          "-ar", "24000",
+          "-ac", "1",
+          "-b:a", "24k",
+          "-payload_type", "110",
+          "-ssrc", String(audioSsrc),
+          "-f", "rtp",
+          "-srtp_out_suite", "AES_CM_128_HMAC_SHA1_80",
+          "-srtp_out_params", audioSrtpParams,
+          `srtp://${targetAddress}:${audioPort}?rtcpport=${audioRtcpPort}&pkt_size=188`,
+        ], { stdio: ["ignore", "pipe", "pipe"] });
+
+        if (logger) {
+          audioFfmpeg.stderr.on("data", (chunk) =>
+            log("debug", `[stream] [ffmpeg/audio] ${chunk.toString().trimEnd()}`)
+          );
+        }
+      }
+
+      // Reconnect on unexpected video FFmpeg exit
+      videoFfmpeg.once("close", async (code) => {
+        if (stopped) return;
+        log("warn", `[stream] FFmpeg/video exited (${code})`);
+        cleanup();
+        if (retries < MAX_RETRIES) {
+          retries++;
+          const delay = Math.min(1000 * retries, 8000);
+          log("debug", `[stream] Reconnecting in ${delay}ms (attempt ${retries}/${MAX_RETRIES})`);
+          await new Promise((r) => setTimeout(r, delay));
+          if (!stopped) {
+            try { await attempt(); } catch (err) {
+              log("error", `[stream] Reconnect failed: ${err.message}`);
+            }
+          }
+        }
+      });
+    };
+
+    await attempt();
+
+    return {
+      stop() {
+        stopped = true;
+        cleanup();
+      },
+    };
   },
 
   // ---- Stream utility functions ---------------------------------------------

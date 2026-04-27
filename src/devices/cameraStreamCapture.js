@@ -20,10 +20,7 @@ const { spawn } = require("child_process");
 const WebSocket = require("ws");
 const { RTCPeerConnection, RTCRtpCodecParameters } = require("werift");
 
-// Wyze cameras stream H.264. werift's default codec preferences include
-// VP8/VP9, which Wyze rejects — the SDP answer ends up empty and werift
-// throws "negotiate codecs failed". Pin H.264 (baseline 3.1, the profile
-// every Wyze cam supports) and matching feedback.
+// Pin H.264 baseline 3.1 — Wyze rejects VP8/VP9 and werift's defaults include those.
 const H264_CODECS = [
   new RTCRtpCodecParameters({
     mimeType: "video/H264",
@@ -35,6 +32,17 @@ const H264_CODECS = [
     ],
     parameters:
       "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42001f",
+  }),
+];
+
+// Accept PCMU (G.711 µ-law, PT 0) and Opus — let the camera pick whichever it supports.
+const AUDIO_CODECS = [
+  new RTCRtpCodecParameters({ mimeType: "audio/PCMU", clockRate: 8000, channels: 1 }),
+  new RTCRtpCodecParameters({
+    mimeType: "audio/opus",
+    clockRate: 48000,
+    channels: 2,
+    parameters: "minptime=10;useinbandfec=1",
   }),
 ];
 
@@ -88,6 +96,26 @@ function localIpAddress() {
     }
   }
   return "0.0.0.0";
+}
+
+// Audio SDP accepts both PCMU (PT 0) and Opus (PT 111) so FFmpeg handles either codec.
+function writeAudioSdpFile(rtpPort) {
+  const sdp = `v=0
+o=- 0 0 IN IP4 127.0.0.1
+s=WyzeAudio
+c=IN IP4 127.0.0.1
+t=0 0
+m=audio ${rtpPort} RTP/AVP 0 111
+a=rtpmap:0 PCMU/8000
+a=rtpmap:111 opus/48000/2
+a=fmtp:111 minptime=10;useinbandfec=1
+`;
+  const sdpPath = path.join(
+    os.tmpdir(),
+    `wyze-audio-${process.pid}-${nodeCrypto.randomBytes(4).toString("hex")}.sdp`
+  );
+  fs.writeFileSync(sdpPath, sdp);
+  return sdpPath;
 }
 
 function _spawnFfmpeg(sdpPath) {
@@ -292,6 +320,7 @@ async function startRtpForwarding({
   signalingUrl,
   iceServers,
   localRtpPort,
+  localAudioRtpPort = null,
   logger = null,
   timeoutMs = 15_000,
 }) {
@@ -300,19 +329,30 @@ async function startRtpForwarding({
     if (typeof logger[level] === "function") logger[level](`[stream] ${msg}`);
   };
 
-  const fwdSock = dgram.createSocket("udp4");
-  fwdSock.bind(0, "127.0.0.1");
+  const videoSock = dgram.createSocket("udp4");
+  videoSock.bind(0, "127.0.0.1");
 
-  const pc = new RTCPeerConnection({ iceServers, codecs: { video: H264_CODECS } });
+  const audioSock = localAudioRtpPort ? dgram.createSocket("udp4") : null;
+  if (audioSock) audioSock.bind(0, "127.0.0.1");
+
+  const codecs = { video: H264_CODECS };
+  if (localAudioRtpPort) codecs.audio = AUDIO_CODECS;
+
+  const pc = new RTCPeerConnection({ iceServers, codecs });
   pc.addTransceiver("video", { direction: "recvonly" });
+  if (localAudioRtpPort) pc.addTransceiver("audio", { direction: "recvonly" });
 
   pc.onTrack.subscribe((track) => {
     log("debug", `forwarding track kind=${track.kind}`);
-    track.onReceiveRtp.subscribe((rtp) => {
-      try {
-        fwdSock.send(rtp.serialize(), localRtpPort, "127.0.0.1");
-      } catch (_) {}
-    });
+    if (track.kind === "video") {
+      track.onReceiveRtp.subscribe((rtp) => {
+        try { videoSock.send(rtp.serialize(), localRtpPort, "127.0.0.1"); } catch (_) {}
+      });
+    } else if (track.kind === "audio" && audioSock) {
+      track.onReceiveRtp.subscribe((rtp) => {
+        try { audioSock.send(rtp.serialize(), localAudioRtpPort, "127.0.0.1"); } catch (_) {}
+      });
+    }
   });
 
   const ws = new WebSocket(signalingUrl);
@@ -368,7 +408,8 @@ async function startRtpForwarding({
     log("debug", "stopping RTP forwarding");
     try { ws.close(); } catch (_) {}
     try { pc.close(); } catch (_) {}
-    try { fwdSock.close(); } catch (_) {}
+    try { videoSock.close(); } catch (_) {}
+    try { audioSock?.close(); } catch (_) {}
   };
 
   return { stop };
@@ -379,6 +420,7 @@ module.exports = {
   startRtpForwarding,
   pickFreeUdpPort,
   writeSdpFile,
+  writeAudioSdpFile,
   resolveFfmpegPath,
   localIpAddress,
 };
