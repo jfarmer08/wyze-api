@@ -10,6 +10,12 @@ const constants = require("./constants");
 const util = require("./util");
 const cameraStreamCapture = require("./devices/cameraStreamCapture");
 const types = require("./types");
+const { installRedirectGuard, WYZE_ALLOWED_HOSTNAMES } = require("./securityHardening");
+
+// Install once at module load: blocks redirects on any axios request bound for
+// known Wyze hostnames so a 3xx can never silently send the bearer token to
+// another host. Other axios consumers in the same process aren't affected.
+installRedirectGuard();
 
 const { propertyIds: PIDs } = types;
 
@@ -1081,6 +1087,7 @@ module.exports.parseVacuumMode = types.parseVacuumMode;
 module.exports.VacuumFaultCode = types.VacuumFaultCode;
 module.exports.VacuumIotPropKeys = types.VacuumIotPropKeys;
 module.exports.VacuumDeviceInfoKeys = types.VacuumDeviceInfoKeys;
+module.exports.WYZE_ALLOWED_HOSTNAMES = WYZE_ALLOWED_HOSTNAMES;
 module.exports.VenusDotArg1 = types.VenusDotArg1;
 module.exports.VenusDotArg2 = types.VenusDotArg2;
 module.exports.VenusDotArg3 = types.VenusDotArg3;
