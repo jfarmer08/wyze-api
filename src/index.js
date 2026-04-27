@@ -1,4 +1,4 @@
-//v0.2.0.0 Update on new releases
+//v0.2.1.0 Update on new releases
 
 const axios = require("axios");
 const fs = require("fs").promises;
