@@ -1,8 +1,30 @@
 /**
  * Device-object helpers for the thermostat — accept a `device` object with
  * .mac and .product_model instead of raw (mac, model) params.
+ *
+ * MAC-level helpers (setThermostatLock, clearThermostatHold) are also
+ * collected here since they are thin single-call wrappers around
+ * thermostatSetIotProp.
  */
 module.exports = {
+  // ---- MAC-level helpers ---------------------------------------------------
+
+  /**
+   * Toggle the child-lock (kid_lock).
+   */
+  async setThermostatLock(deviceMac, deviceModel, locked) {
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "kid_lock", locked ? "1" : "0");
+  },
+
+  /**
+   * Clear an active manual hold.
+   */
+  async clearThermostatHold(deviceMac, deviceModel) {
+    return this.thermostatSetIotProp(deviceMac, deviceModel, "dev_hold", "0");
+  },
+
+  // ---- Device-object wrappers ----------------------------------------------
+
   async thermostatSystemMode(device, mode) {
     return this.setThermostatSystemMode(device.mac, device.product_model, mode);
   },

@@ -1,42 +1,8 @@
-const { propertyIds: PIDs, DeviceModels } = require("../types");
-
 /**
- * Wyze Plug + Plug Outdoor. Power via P3; timers via shared
- * setDeviceTimer/cancelDeviceTimer (mixed in from auth module
- * eventually — currently lives on the class).
+ * Wyze Plug + Plug Outdoor. Thin wrappers (plugPower, plugTurnOn, timers, etc.)
+ * live in plugs.helpers.js. This file retains only methods with real logic.
  */
 module.exports = {
-  /**
-   * @param {number|string} value — 1=on, 0=off
-   */
-  async plugPower(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.ON, value);
-  },
-
-  async plugTurnOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "1");
-  },
-
-  async plugTurnOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "0");
-  },
-
-  async plugTurnOnAfter(deviceMac, delaySeconds) {
-    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
-  },
-
-  async plugTurnOffAfter(deviceMac, delaySeconds) {
-    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
-  },
-
-  async clearPlugTimer(deviceMac) {
-    return this.cancelDeviceTimer(deviceMac);
-  },
-
-  async getPlugTimer(deviceMac) {
-    return this.getDeviceTimer(deviceMac);
-  },
-
   /**
    * Energy usage records between two times.
    * @param {Object} options

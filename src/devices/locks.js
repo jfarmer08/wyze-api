@@ -1,6 +1,6 @@
 const crypto = require("../utils/crypto");
 const payloadFactory = require("../utils/payloadFactory");
-const { DeviceModels, LockKeyPermissionType } = require("../types");
+const { LockKeyPermissionType } = require("../types");
 
 /**
  * Wyze Locks — three families:
@@ -9,6 +9,9 @@ const { DeviceModels, LockKeyPermissionType } = require("../types");
  *   - Palm Lock (DX_PVLOC) via IoT3
  *
  * Plus access-code management on V1 (encrypted PINs via crypt secret).
+ *
+ * Thin wrappers (getLockDeviceList, getLockGatewayList, lockBoltV2Lock,
+ * lockBoltV2Unlock, palmLockGetProperties, etc.) live in locks.helpers.js.
  */
 module.exports = {
   // ---- V1 Lock (Ford service) ----------------------------------------------
@@ -25,16 +28,6 @@ module.exports = {
       uuid: this.getUuid(deviceMac, deviceModel),
       with_keypad: "1",
     });
-  },
-
-  async getLockDeviceList() {
-    const devices = await this.getDeviceList();
-    return devices.filter((d) => DeviceModels.LOCK.includes(d.product_model));
-  },
-
-  async getLockGatewayList() {
-    const devices = await this.getDeviceList();
-    return devices.filter((d) => DeviceModels.LOCK_GATEWAY.includes(d.product_model));
   },
 
   async getLockKeypadInfo(deviceMac, deviceModel) {
@@ -294,33 +287,5 @@ module.exports = {
       this.username
     );
     return this._iot3Post("/app/v4/iot3/run-action", payload);
-  },
-
-  async lockBoltV2GetProperties(deviceMac, deviceModel) {
-    return this.iot3GetProperties(deviceMac, deviceModel, [
-      "lock::lock-status",
-      "lock::door-status",
-      "iot-device::iot-state",
-      "battery::battery-level",
-      "battery::power-source",
-      "device-info::firmware-ver",
-    ]);
-  },
-
-  async lockBoltV2Lock(deviceMac, deviceModel) {
-    return this.iot3RunAction(deviceMac, deviceModel, "lock::lock");
-  },
-
-  async lockBoltV2Unlock(deviceMac, deviceModel) {
-    return this.iot3RunAction(deviceMac, deviceModel, "lock::unlock");
-  },
-
-  async palmLockGetProperties(deviceMac, deviceModel) {
-    return this.iot3GetProperties(deviceMac, deviceModel, [
-      "lock::lock-status",
-      "battery::battery-level",
-      "iot-device::iot-state",
-      "device-info::firmware-ver",
-    ]);
   },
 };

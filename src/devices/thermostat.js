@@ -30,6 +30,9 @@ function validateOneOf(value, allowed, label) {
  * Read methods route through `_earthGet` (services/olive.js wraps the
  * Earth service); writes go through `_earthPost`. Typed setters validate
  * against the enums in `src/types.js`.
+ *
+ * Thin wrappers (setThermostatLock, clearThermostatHold) live in
+ * thermostat.helpers.js.
  */
 module.exports = {
   async thermostatGetIotProp(deviceMac) {
@@ -148,13 +151,6 @@ module.exports = {
   },
 
   /**
-   * Toggle the child-lock (kid_lock).
-   */
-  async setThermostatLock(deviceMac, deviceModel, locked) {
-    return this.thermostatSetIotProp(deviceMac, deviceModel, "kid_lock", locked ? "1" : "0");
-  },
-
-  /**
    * Comfort-balance behavior (Settings → Behavior). 1–5.
    */
   async setThermostatComfortBalance(deviceMac, deviceModel, mode) {
@@ -173,13 +169,6 @@ module.exports = {
     }
     await this.thermostatSetIotProp(deviceMac, deviceModel, "dev_hold", "1");
     await this.thermostatSetIotProp(deviceMac, deviceModel, "dev_holdtime", String(ts));
-  },
-
-  /**
-   * Clear an active manual hold.
-   */
-  async clearThermostatHold(deviceMac, deviceModel) {
-    return this.thermostatSetIotProp(deviceMac, deviceModel, "dev_hold", "0");
   },
 
 };

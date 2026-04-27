@@ -1,12 +1,6 @@
 const axios = require("axios");
 const crypto = require("../utils/crypto");
 const constants = require("../constants");
-const {
-  propertyIds: PIDs,
-  propertyValues: PVals,
-  DeviceModels,
-  DeviceMgmtToggleProps,
-} = require("../types");
 const cameraStreamCapture = require("./cameraStreamCapture");
 
 /**
@@ -17,32 +11,13 @@ const cameraStreamCapture = require("./cameraStreamCapture");
  * Routes through DeviceMgmt (services/devicemgmt.js) for newer cameras
  * (Floodlight Pro, Battery Cam Pro, OG cam) that don't respond to the
  * standard run_action endpoint.
+ *
+ * Thin wrappers (cameraPrivacy, cameraRestart, garageDoor, cameraFloodLight,
+ * cameraSpotLight*, cameraSoundNotification*, cameraNotifications,
+ * cameraMotionRecording*, cameraGetSignalingUrl, cameraGetIceServers) live in
+ * cameras.helpers.js.
  */
 module.exports = {
-  // ---- Controls -----------------------------------------------------------
-
-  async cameraPrivacy(deviceMac, deviceModel, value) {
-    await this.runAction(deviceMac, deviceModel, value);
-  },
-
-  async cameraTurnOn(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtRunAction(deviceMac, deviceModel, "power", "wakeup");
-    }
-    await this.runAction(deviceMac, deviceModel, "power_on");
-  },
-
-  async cameraTurnOff(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtRunAction(deviceMac, deviceModel, "power", "sleep");
-    }
-    await this.runAction(deviceMac, deviceModel, "power_off");
-  },
-
-  async cameraRestart(deviceMac, deviceModel) {
-    return this.runAction(deviceMac, deviceModel, "restart");
-  },
-
   /**
    * Recent camera events (motion / sound / face / etc.).
    */
@@ -77,149 +52,6 @@ module.exports = {
     const data = { push_switch: on ? "1" : "0" };
     const result = await this.request("app/user/set_push_info", data);
     return result.data;
-  },
-
-  /**
-   * Open or close the garage door (single trigger action).
-   */
-  async garageDoor(deviceMac, deviceModel) {
-    await this.runAction(deviceMac, deviceModel, "garage_door_trigger");
-  },
-
-  // ---- Siren ---------------------------------------------------------------
-
-  async cameraSiren(deviceMac, deviceModel, value) {
-    await this.runAction(deviceMac, deviceModel, value);
-  },
-
-  async cameraSirenOn(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtRunAction(deviceMac, deviceModel, "siren", "siren-on");
-    }
-    await this.runAction(deviceMac, deviceModel, "siren_on");
-  },
-
-  async cameraSirenOff(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtRunAction(deviceMac, deviceModel, "siren", "siren-off");
-    }
-    await this.runAction(deviceMac, deviceModel, "siren_off");
-  },
-
-  // ---- Floodlight / Spotlight (P1056) -------------------------------------
-
-  async cameraFloodLight(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, value);
-  },
-
-  async cameraFloodLightOn(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtRunAction(deviceMac, deviceModel, "floodlight", "1");
-    }
-    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.ON);
-  },
-
-  async cameraFloodLightOff(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtRunAction(deviceMac, deviceModel, "floodlight", "0");
-    }
-    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.OFF);
-  },
-
-  async cameraSpotLight(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, value);
-  },
-
-  async cameraSpotLightOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.ON);
-  },
-
-  async cameraSpotLightOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.OFF);
-  },
-
-  // ---- Motion detection (three paths: DeviceMgmt / WCO / standard) --------
-
-  async cameraMotionOn(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "1"
-      );
-    }
-    if (
-      DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
-      DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
-    ) {
-      // Wyze Cam Outdoor (WVOD1 / HL_WCO2) uses a separate PID.
-      return this.setProperty(deviceMac, deviceModel, PIDs.WCO_MOTION_DETECTION, "1");
-    }
-    // Standard cameras need both PIDs: state (P1047) and toggle (P1001).
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION_STATE, 1);
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION, 1);
-  },
-
-  async cameraMotionOff(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "0"
-      );
-    }
-    if (
-      DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
-      DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
-    ) {
-      return this.setProperty(deviceMac, deviceModel, PIDs.WCO_MOTION_DETECTION, "0");
-    }
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION_STATE, 0);
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION, 0);
-  },
-
-  // ---- Sound notifications -------------------------------------------------
-
-  async cameraSoundNotificationOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.SOUND_NOTIFICATION, "1");
-  },
-
-  async cameraSoundNotificationOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.SOUND_NOTIFICATION, "0");
-  },
-
-  // ---- Push notifications --------------------------------------------------
-
-  async cameraNotifications(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, value);
-  },
-
-  async cameraNotificationsOn(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "1"
-      );
-    }
-    await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "1");
-  },
-
-  async cameraNotificationsOff(deviceMac, deviceModel) {
-    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
-      return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "0"
-      );
-    }
-    await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "0");
-  },
-
-  // ---- Motion recording (cloud event recording) ----------------------------
-
-  async cameraMotionRecording(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_RECORDING, value);
-  },
-
-  async cameraMotionRecordingOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_RECORDING, "1");
-  },
-
-  async cameraMotionRecordingOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_RECORDING, "0");
   },
 
   // ---- WebRTC streaming ---------------------------------------------------
@@ -308,16 +140,6 @@ module.exports = {
     }
   },
 
-  async cameraGetSignalingUrl(deviceMac, deviceModel, options = {}) {
-    const info = await this.cameraGetStreamInfo(deviceMac, deviceModel, options);
-    return info.signaling_url;
-  },
-
-  async cameraGetIceServers(deviceMac, deviceModel, options = {}) {
-    const info = await this.cameraGetStreamInfo(deviceMac, deviceModel, options);
-    return info.ice_servers;
-  },
-
   // ---- Snapshot capture (headless WebRTC) ---------------------------------
 
   /**
@@ -374,29 +196,6 @@ module.exports = {
     if (!camera) throw new Error(`Camera not found: ${mac}`);
     const buffer = await this.cameraCaptureSnapshot(camera.mac, camera.product_model, options);
     return { buffer, source: "capture" };
-  },
-
-  // ---- Camera-specific device-info accessors -------------------------------
-
-  cameraGetSignalStrength(device) {
-    return device?.device_params?.signal_strength ?? null;
-  },
-
-  cameraGetIp(device) {
-    return device?.device_params?.ip ?? null;
-  },
-
-  cameraGetFirmware(device) {
-    return device?.firmware_ver ?? null;
-  },
-
-  cameraGetTimezone(device) {
-    return device?.timezone_name ?? null;
-  },
-
-  cameraGetLastSeen(device) {
-    const ts = device?.device_params?.last_login_time;
-    return typeof ts === "number" ? new Date(ts) : null;
   },
 
   _streamCacheKey(deviceMac, deviceModel, substream) {

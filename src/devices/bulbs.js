@@ -5,7 +5,6 @@ const {
   LightVisualEffectRunType,
   LightVisualEffectModelsWithDirection,
   LightControlMode,
-  LightPowerLossRecoveryMode,
 } = require("../types");
 
 /**
@@ -18,66 +17,11 @@ const {
  *             behind the Wyze hub mesh.
  *
  * Many setters branch on `deviceModel` to pick the right path.
+ * Thin wrappers (lightPower, setBrightness, lightMeshOn, getBulbDeviceList,
+ * etc.) live in bulbs.helpers.js.
  */
 module.exports = {
-  // ---- Basic light power (direct) ------------------------------------------
-
-  async lightPower(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.ON, value);
-  },
-
-  async lightTurnOn(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "1");
-  },
-
-  async lightTurnOff(deviceMac, deviceModel) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.ON, "0");
-  },
-
-  async lightTurnOnAfter(deviceMac, delaySeconds) {
-    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
-  },
-
-  async lightTurnOffAfter(deviceMac, delaySeconds) {
-    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
-  },
-
-  async clearLightTimer(deviceMac) {
-    return this.cancelDeviceTimer(deviceMac);
-  },
-
-  // Convenience aliases — bulb-named timers (same wire as light timers).
-  async bulbTurnOnAfter(deviceMac, delaySeconds) {
-    return this.setDeviceTimer(deviceMac, delaySeconds, 1);
-  },
-
-  async bulbTurnOffAfter(deviceMac, delaySeconds) {
-    return this.setDeviceTimer(deviceMac, delaySeconds, 0);
-  },
-
-  async clearBulbTimer(deviceMac) {
-    return this.cancelDeviceTimer(deviceMac);
-  },
-
-  async setBrightness(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.BRIGHTNESS, value);
-  },
-
-  async setColorTemperature(deviceMac, deviceModel, value) {
-    await this.setProperty(deviceMac, deviceModel, PIDs.COLOR_TEMP, value);
-  },
-
   // ---- Lookup --------------------------------------------------------------
-
-  async getBulbDeviceList() {
-    const devices = await this.getDeviceList();
-    return devices.filter((d) => DeviceModels.BULB.includes(d.product_model));
-  },
-
-  async getBulb(mac) {
-    const bulbs = await this.getBulbDeviceList();
-    return bulbs.find((d) => d.mac === mac);
-  },
 
   /**
    * Combined snapshot — list entry merged with property list.
@@ -131,21 +75,6 @@ module.exports = {
       enabled ? "1" : "0",
       "set_mesh_property"
     );
-  },
-
-  /**
-   * Set behavior on power restore. P1509 with `LightPowerLossRecoveryMode`.
-   */
-  async setBulbPowerLossRecovery(deviceMac, deviceModel, mode) {
-    return this.setProperty(deviceMac, deviceModel, PIDs.POWER_LOSS_RECOVERY, String(mode));
-  },
-
-  /**
-   * Disable bulb away mode. P1506 = "0". The enable path needs an
-   * undocumented switch_rule generator and is deliberately not implemented.
-   */
-  async setBulbAwayModeOff(deviceMac, deviceModel) {
-    return this.setProperty(deviceMac, deviceModel, PIDs.AWAY_MODE, "0");
   },
 
   // ---- Light strip visual effects ------------------------------------------
@@ -297,36 +226,6 @@ module.exports = {
       return;
     }
     return this.setProperty(deviceMac, deviceModel, PIDs.COLOR_TEMP, value);
-  },
-
-  // ---- Mesh bulb / light strip basic controls ------------------------------
-
-  async lightMeshPower(deviceMac, deviceModel, value) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.ON, value, "set_mesh_property");
-  },
-
-  async lightMeshOn(deviceMac, deviceModel) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.ON, "1", "set_mesh_property");
-  },
-
-  async lightMeshOff(deviceMac, deviceModel) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.ON, "0", "set_mesh_property");
-  },
-
-  async setMeshBrightness(deviceMac, deviceModel, value) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.BRIGHTNESS, value, "set_mesh_property");
-  },
-
-  async setMeshColorTemperature(deviceMac, deviceModel, value) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.COLOR_TEMP, value, "set_mesh_property");
-  },
-
-  async setMeshHue(deviceMac, deviceModel, value) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.COLOR, value, "set_mesh_property");
-  },
-
-  async setMeshSaturation(deviceMac, deviceModel, value) {
-    await this.runActionList(deviceMac, deviceModel, PIDs.COLOR, value, "set_mesh_property");
   },
 
 };

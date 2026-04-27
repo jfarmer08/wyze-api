@@ -1,9 +1,6 @@
 const constants = require("../constants");
 const {
-  VacuumControlType,
-  VacuumControlValue,
   VacuumPreferenceType,
-  VacuumSuctionLevel,
   VacuumIotPropKeys,
   VacuumDeviceInfoKeys,
   VacuumControlTypeDescription,
@@ -12,6 +9,9 @@ const {
 /**
  * Wyze Robot Vacuum (JA_RO2) — talks to the Venus service via
  * `_venusRequest` (mixed in from services/venus.js).
+ *
+ * Thin wrappers (getVacuumDeviceList, vacuumClean, vacuumDock, etc.) live in
+ * vacuum.helpers.js.
  */
 module.exports = {
   /**
@@ -37,16 +37,6 @@ module.exports = {
     payload.arg11 = "ios";
     payload.arg12 = "iPhone 13 mini";
     return this._venusRequest("POST", "/plugin/venus/event_tracking", payload);
-  },
-
-  async getVacuumDeviceList() {
-    const devices = await this.getDeviceList();
-    return devices.filter((d) => constants.vacuumModels.includes(d.product_model));
-  },
-
-  async getVacuum(mac) {
-    const vacuums = await this.getVacuumDeviceList();
-    return vacuums.find((v) => v.mac === mac);
   },
 
   /**
@@ -151,40 +141,6 @@ module.exports = {
   async vacuumControl(mac, type, value, extras = {}) {
     const payload = { type, value, vacuumMopMode: 0, ...extras };
     return this._venusRequest("POST", `/plugin/venus/${mac}/control`, payload);
-  },
-
-  async vacuumClean(mac) {
-    return this.vacuumControl(mac, VacuumControlType.GLOBAL_SWEEPING, VacuumControlValue.START);
-  },
-
-  async vacuumPause(mac) {
-    return this.vacuumControl(mac, VacuumControlType.GLOBAL_SWEEPING, VacuumControlValue.PAUSE);
-  },
-
-  async vacuumDock(mac) {
-    return this.vacuumControl(mac, VacuumControlType.RETURN_TO_CHARGING, VacuumControlValue.START);
-  },
-
-  async vacuumStop(mac) {
-    return this.vacuumControl(mac, VacuumControlType.RETURN_TO_CHARGING, VacuumControlValue.STOP);
-  },
-
-  /**
-   * Cancel a pending "resume after charging" state. Same wire payload as
-   * vacuumStop; named separately for caller clarity.
-   */
-  async vacuumCancel(mac) {
-    return this.vacuumControl(mac, VacuumControlType.RETURN_TO_CHARGING, VacuumControlValue.STOP);
-  },
-
-  async vacuumSweepRooms(mac, roomIds) {
-    const ids = Array.isArray(roomIds) ? roomIds : [roomIds];
-    return this.vacuumControl(
-      mac,
-      VacuumControlType.GLOBAL_SWEEPING,
-      VacuumControlValue.START,
-      { rooms_id: ids }
-    );
   },
 
   /**
