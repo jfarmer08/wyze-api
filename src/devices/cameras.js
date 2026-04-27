@@ -1,6 +1,6 @@
 const axios = require("axios");
 const nodeCrypto = require("crypto");
-const crypto = require("../crypto");
+const crypto = require("../utils/crypto");
 const constants = require("../constants");
 const {
   propertyIds: PIDs,

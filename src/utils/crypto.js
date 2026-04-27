@@ -1,7 +1,7 @@
 const crypto = require('crypto')
 const utf8 = require('utf8')
 const querystring = require('querystring')
-const constants = require('./constants')
+const constants = require('../constants')
 
 
 function fordCreateSignature(url_path, request_method, data) {

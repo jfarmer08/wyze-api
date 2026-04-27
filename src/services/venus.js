@@ -1,5 +1,5 @@
 const axios = require("axios");
-const crypto = require("../crypto");
+const crypto = require("../utils/crypto");
 const constants = require("../constants");
 
 /**

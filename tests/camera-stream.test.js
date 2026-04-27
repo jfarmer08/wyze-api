@@ -6,7 +6,7 @@
 const test = require("node:test");
 const assert = require("node:assert");
 const WyzeAPI = require("../src/index");
-const cryptoHelpers = require("../src/crypto");
+const cryptoHelpers = require("../src/utils/crypto");
 
 const stub = () => Object.create(WyzeAPI.prototype);
 

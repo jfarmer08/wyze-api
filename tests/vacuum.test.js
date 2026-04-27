@@ -7,7 +7,7 @@ const assert = require("node:assert");
 const nodeCrypto = require("crypto");
 
 const WyzeAPI = require("../src/index");
-const venusCrypto = require("../src/crypto");
+const venusCrypto = require("../src/utils/crypto");
 const constants = require("../src/constants");
 
 const stub = () => {

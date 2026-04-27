@@ -1,4 +1,4 @@
-const constants = require("./constants");
+const constants = require("../constants");
 const crypto = require("./crypto");
 
 function fordCreatePayload(access_token, payload, url_path, request_method) {

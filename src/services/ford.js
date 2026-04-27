@@ -1,5 +1,5 @@
 const axios = require("axios");
-const payloadFactory = require("../payloadFactory");
+const payloadFactory = require("../utils/payloadFactory");
 
 /**
  * Ford service (yd-saas-toc.wyzecam.com) — V1 locks. Signing happens via

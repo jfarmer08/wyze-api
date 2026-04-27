@@ -1,5 +1,5 @@
-const crypto = require("../crypto");
-const payloadFactory = require("../payloadFactory");
+const crypto = require("../utils/crypto");
+const payloadFactory = require("../utils/payloadFactory");
 const { DeviceModels, LockKeyPermissionType } = require("../types");
 
 /**

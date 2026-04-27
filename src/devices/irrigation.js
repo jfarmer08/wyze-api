@@ -1,4 +1,4 @@
-const payloadFactory = require("../payloadFactory");
+const payloadFactory = require("../utils/payloadFactory");
 const constants = require("../constants");
 
 /**
