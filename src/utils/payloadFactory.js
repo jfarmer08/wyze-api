@@ -2,13 +2,29 @@ const constants = require("../constants");
 const crypto = require("./crypto");
 
 function fordCreatePayload(access_token, payload, url_path, request_method) {
-  return {
+  // Two things the Wyze server is picky about — verified against the
+  // shauntarves/wyze-sdk reference implementation:
+  //
+  // 1. The token field name DIFFERS by HTTP method:
+  //      GET  → access_token  (snake_case, kept from the original API)
+  //      POST → accessToken   (camelCase — the Wyze app started doing this
+  //                            for POST and the server enforces it)
+  //    Sending the wrong field name returns PARAM_SIGN_INVALID even when
+  //    the signature is otherwise correct.
+  //
+  // 2. The signature must be computed over the *augmented* payload (with
+  //    the token / key / timestamp fields added), and the request_method
+  //    in the signing string is lowercase.
+  const method = String(request_method).toLowerCase();
+  const tokenField = method === "get" ? "access_token" : "accessToken";
+  const augmented = {
     ...payload,
-    accessToken: access_token,
+    [tokenField]: access_token,
     key: constants.fordAppKey,
     timestamp: Date.now().toString(),
-    sign: crypto.fordCreateSignature(url_path, request_method, payload),
   };
+  augmented.sign = crypto.fordCreateSignature(url_path, method, augmented);
+  return augmented;
 }
 
 function oliveCreateGetPayload(device_mac, keys) {

@@ -9,6 +9,8 @@ const payloadFactory = require("../utils/payloadFactory");
 module.exports = {
   async _fordGet(urlPath, params = {}) {
     await this.maybeLogin();
+    // fordCreatePayload picks the right token field name (access_token for
+    // GET, accessToken for POST) and lowercases the method for signing.
     const signedParams = payloadFactory.fordCreatePayload(
       this.access_token,
       params,
@@ -36,6 +38,9 @@ module.exports = {
 
   async _fordPost(urlPath, params = {}, method = "post") {
     await this.maybeLogin();
+    // The signing string uses lowercase method (handled inside
+    // fordCreatePayload). axios accepts either case, so we keep the
+    // original method for the actual request.
     const signedPayload = payloadFactory.fordCreatePayload(
       this.access_token,
       params,
