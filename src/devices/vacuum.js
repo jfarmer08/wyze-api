@@ -1,7 +1,15 @@
 const constants = require("../constants");
-const types = require("../types");
-
-const { VacuumControlType, VacuumControlValue, VacuumPreferenceType } = types;
+const {
+  VacuumControlType,
+  VacuumControlValue,
+  VacuumPreferenceType,
+  VacuumSuctionLevel,
+  VacuumIotPropKeys,
+  VacuumDeviceInfoKeys,
+  VacuumControlTypeDescription,
+  VacuumFaultCode,
+  parseVacuumMode,
+} = require("../types");
 
 /**
  * Wyze Robot Vacuum (JA_RO2) — talks to the Venus service via
@@ -22,7 +30,7 @@ module.exports = {
       pluginVersion: constants.venusPluginVersion,
       phoneId: this.phoneId,
       phoneOsVersion: "16.0",
-      eventKey: types.VacuumControlTypeDescription[typeCode],
+      eventKey: VacuumControlTypeDescription[typeCode],
       eventType: valueCode,
     };
     args.forEach((value, index) => {
@@ -62,12 +70,12 @@ module.exports = {
     };
 
     const iotProp = await safe("get_iot_prop", () =>
-      this.getVacuumIotProp(mac, types.VacuumIotPropKeys)
+      this.getVacuumIotProp(mac, VacuumIotPropKeys)
     );
     if (iotProp?.data?.props) Object.assign(result, iotProp.data.props);
 
     const deviceInfo = await safe("device_info", () =>
-      this.getVacuumDeviceInfo(mac, types.VacuumDeviceInfoKeys)
+      this.getVacuumDeviceInfo(mac, VacuumDeviceInfoKeys)
     );
     if (deviceInfo?.data?.settings) Object.assign(result, deviceInfo.data.settings);
 
@@ -213,15 +221,15 @@ module.exports = {
   },
 
   async vacuumQuiet(device) {
-    return this.vacuumSetSuctionLevel(device.mac, device.product_model, types.VacuumSuctionLevel.QUIET);
+    return this.vacuumSetSuctionLevel(device.mac, device.product_model, VacuumSuctionLevel.QUIET);
   },
 
   async vacuumStandard(device) {
-    return this.vacuumSetSuctionLevel(device.mac, device.product_model, types.VacuumSuctionLevel.STANDARD);
+    return this.vacuumSetSuctionLevel(device.mac, device.product_model, VacuumSuctionLevel.STANDARD);
   },
 
   async vacuumStrong(device) {
-    return this.vacuumSetSuctionLevel(device.mac, device.product_model, types.VacuumSuctionLevel.STRONG);
+    return this.vacuumSetSuctionLevel(device.mac, device.product_model, VacuumSuctionLevel.STRONG);
   },
 
   async vacuumInfo(device) {
@@ -237,13 +245,13 @@ module.exports = {
   },
 
   vacuumGetMode(info) {
-    return types.parseVacuumMode(info?.mode);
+    return parseVacuumMode(info?.mode);
   },
 
   vacuumGetFault(info) {
     const code = info?.fault_code;
     if (typeof code !== "number" || code === 0) return null;
-    return { code, description: types.VacuumFaultCode[code] ?? null };
+    return { code, description: VacuumFaultCode[code] ?? null };
   },
 
   vacuumIsCharging(info) {

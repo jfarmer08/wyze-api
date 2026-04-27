@@ -1,4 +1,4 @@
-const types = require("../types");
+const { DeviceModels } = require("../types");
 
 /**
  * Wyze Sense sensors — contact (DWS3U/DWS2U) and motion (PIR3U/PIR2U).
@@ -10,7 +10,7 @@ const types = require("../types");
 module.exports = {
   async getContactSensorList() {
     const devices = await this.getDeviceList();
-    return devices.filter((d) => types.DeviceModels.CONTACT_SENSOR.includes(d.product_model));
+    return devices.filter((d) => DeviceModels.CONTACT_SENSOR.includes(d.product_model));
   },
 
   async getContactSensor(mac) {
@@ -36,7 +36,7 @@ module.exports = {
 
   async getMotionSensorList() {
     const devices = await this.getDeviceList();
-    return devices.filter((d) => types.DeviceModels.MOTION_SENSOR.includes(d.product_model));
+    return devices.filter((d) => DeviceModels.MOTION_SENSOR.includes(d.product_model));
   },
 
   async getMotionSensor(mac) {

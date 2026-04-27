@@ -169,8 +169,6 @@ const wyze2HomekitWorkingStates = {
   cooling: 2,
 };
 
-const GET_PAYLOAD = new Set(["param_info"]);
-
 // Wyze Light/Bulb — codes used by mesh bulbs and light strips.
 
 // Mesh-bulb / light-strip color control mode. Written to P1508. Strip-aware

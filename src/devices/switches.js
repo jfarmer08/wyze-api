@@ -1,4 +1,4 @@
-const types = require("../types");
+const { wyzeWallSwitch } = require("../types");
 
 /**
  * Wyze Smart Wall Switch (LD_SS1). Distinct surfaces:
@@ -99,4 +99,4 @@ module.exports = {
 };
 
 // Re-export the wallSwitch enum for convenience.
-module.exports.wyzeWallSwitch = types.wyzeWallSwitch;
+module.exports.wyzeWallSwitch = wyzeWallSwitch;

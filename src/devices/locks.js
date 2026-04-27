@@ -1,6 +1,6 @@
 const crypto = require("../crypto");
 const payloadFactory = require("../payloadFactory");
-const types = require("../types");
+const { DeviceModels, LockKeyPermissionType } = require("../types");
 
 /**
  * Wyze Locks — three families:
@@ -41,12 +41,12 @@ module.exports = {
 
   async getLockDeviceList() {
     const devices = await this.getDeviceList();
-    return devices.filter((d) => types.DeviceModels.LOCK.includes(d.product_model));
+    return devices.filter((d) => DeviceModels.LOCK.includes(d.product_model));
   },
 
   async getLockGatewayList() {
     const devices = await this.getDeviceList();
-    return devices.filter((d) => types.DeviceModels.LOCK_GATEWAY.includes(d.product_model));
+    return devices.filter((d) => DeviceModels.LOCK_GATEWAY.includes(d.product_model));
   },
 
   async getLockKeypadInfo(deviceMac, deviceModel) {
@@ -115,7 +115,7 @@ module.exports = {
    *   - RECURRING (4): begin/end forced to 0; pair with periodicity
    */
   buildLockKeyPermission(type, begin, end) {
-    if (!Object.values(types.LockKeyPermissionType).includes(type)) {
+    if (!Object.values(LockKeyPermissionType).includes(type)) {
       throw new Error(`buildLockKeyPermission: invalid type ${type}`);
     }
     const out = { status: type };
@@ -125,12 +125,12 @@ module.exports = {
       if (typeof v === "number") return Math.floor(v);
       throw new Error("buildLockKeyPermission: begin/end must be Date or epoch seconds");
     };
-    if (type === types.LockKeyPermissionType.RECURRING) {
+    if (type === LockKeyPermissionType.RECURRING) {
       out.begin = 0;
       out.end = 0;
     } else if (
-      type === types.LockKeyPermissionType.DURATION ||
-      type === types.LockKeyPermissionType.ONCE
+      type === LockKeyPermissionType.DURATION ||
+      type === LockKeyPermissionType.ONCE
     ) {
       const b = toEpochSec(begin);
       const e = toEpochSec(end);
@@ -174,8 +174,8 @@ module.exports = {
     }
     if (!userId) throw new Error("addLockAccessCode: userId is required");
 
-    const perm = permission ?? this.buildLockKeyPermission(types.LockKeyPermissionType.ALWAYS);
-    if (perm.status === types.LockKeyPermissionType.RECURRING && !periodicity) {
+    const perm = permission ?? this.buildLockKeyPermission(LockKeyPermissionType.ALWAYS);
+    if (perm.status === LockKeyPermissionType.RECURRING && !periodicity) {
       throw new Error("addLockAccessCode: periodicity is required when permission.type is RECURRING");
     }
 
@@ -199,7 +199,7 @@ module.exports = {
     const { accessCodeId, accessCode, name, permission, periodicity } = options;
     if (accessCodeId == null) throw new Error("updateLockAccessCode: accessCodeId is required");
     if (!permission) throw new Error("updateLockAccessCode: permission is required");
-    if (permission.status === types.LockKeyPermissionType.RECURRING && !periodicity) {
+    if (permission.status === LockKeyPermissionType.RECURRING && !periodicity) {
       throw new Error("updateLockAccessCode: periodicity is required when permission.type is RECURRING");
     }
 

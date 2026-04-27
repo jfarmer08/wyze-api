@@ -1,6 +1,12 @@
-const types = require("../types");
-
-const PIDs = types.propertyIds;
+const {
+  propertyIds: PIDs,
+  DeviceModels,
+  LightVisualEffectModel,
+  LightVisualEffectRunType,
+  LightVisualEffectModelsWithDirection,
+  LightControlMode,
+  LightPowerLossRecoveryMode,
+} = require("../types");
 
 /**
  * Wyze Bulb / Light / Mesh Bulb / Light Strip / Light Strip Pro.
@@ -65,7 +71,7 @@ module.exports = {
 
   async getBulbDeviceList() {
     const devices = await this.getDeviceList();
-    return devices.filter((d) => types.DeviceModels.BULB.includes(d.product_model));
+    return devices.filter((d) => DeviceModels.BULB.includes(d.product_model));
   },
 
   async getBulb(mac) {
@@ -98,8 +104,8 @@ module.exports = {
   async setBulbSunMatch(deviceMac, deviceModel, enabled) {
     const value = enabled ? "1" : "0";
     if (
-      types.DeviceModels.MESH_BULB.includes(deviceModel) &&
-      !types.DeviceModels.LIGHT_STRIP.includes(deviceModel)
+      DeviceModels.MESH_BULB.includes(deviceModel) &&
+      !DeviceModels.LIGHT_STRIP.includes(deviceModel)
     ) {
       // Mesh color bulbs (WLPA19C) need set_property_list (plural) —
       // set_property (singular) silently no-ops for them.
@@ -115,7 +121,7 @@ module.exports = {
    * from `setBulbEffect` which writes the full effect plist).
    */
   async setBulbMusicMode(deviceMac, deviceModel, enabled) {
-    if (!types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+    if (!DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
       throw new Error(`setBulbMusicMode: ${deviceModel} is not a light strip`);
     }
     return this.runActionList(
@@ -151,8 +157,7 @@ module.exports = {
           enr,
           ip,
           propertyId,
-          propertyValue,
-          actionKey
+          propertyValue
         );
       } catch (err) {
         if (this.apiLogEnabled) {
@@ -191,11 +196,11 @@ module.exports = {
    */
   buildLightVisualEffect(options) {
     const { model } = options;
-    if (!Object.values(types.LightVisualEffectModel).includes(model)) {
+    if (!Object.values(LightVisualEffectModel).includes(model)) {
       throw new Error(`buildLightVisualEffect: invalid model ${JSON.stringify(model)}`);
     }
     const runType = options.runType ?? null;
-    if (runType !== null && !Object.values(types.LightVisualEffectRunType).includes(runType)) {
+    if (runType !== null && !Object.values(LightVisualEffectRunType).includes(runType)) {
       throw new Error(`buildLightVisualEffect: invalid runType ${JSON.stringify(runType)}`);
     }
     const speed = options.speed ?? 8;
@@ -215,7 +220,7 @@ module.exports = {
       { pid: PIDs.LAMP_WITH_MUSIC_AUTO_COLOR, pvalue: options.autoColor ? "1" : "0" },
       { pid: PIDs.LAMP_WITH_MUSIC_COLOR, pvalue: options.colorPalette ?? "2961AF,B5267A,91FF6A" },
     ];
-    if (runType !== null && types.LightVisualEffectModelsWithDirection.includes(model)) {
+    if (runType !== null && LightVisualEffectModelsWithDirection.includes(model)) {
       plist.push({ pid: PIDs.LAMP_WITH_MUSIC_TYPE, pvalue: runType });
     }
     return plist;
@@ -226,13 +231,13 @@ module.exports = {
    * a flip of P1508 → FRAGMENTED so the strip enters scene mode.
    */
   async setBulbEffect(deviceMac, deviceModel, effectOptions) {
-    if (!types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+    if (!DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
       throw new Error(`setBulbEffect: ${deviceModel} is not a light strip`);
     }
     const plist = this.buildLightVisualEffect(effectOptions);
     plist.push({
       pid: PIDs.CONTROL_LIGHT,
-      pvalue: String(types.LightControlMode.FRAGMENTED),
+      pvalue: String(LightControlMode.FRAGMENTED),
     });
     return this.runActionListMulti(deviceMac, deviceModel, plist, "set_mesh_property");
   },
@@ -250,11 +255,11 @@ module.exports = {
    * @param {string|string[]} hex — `"FF5733"` or array of 16 HEX strings.
    */
   async setBulbColor(deviceMac, deviceModel, hex) {
-    if (!types.DeviceModels.MESH_BULB.includes(deviceModel)) {
+    if (!DeviceModels.MESH_BULB.includes(deviceModel)) {
       throw new Error(`setBulbColor: ${deviceModel} does not support color`);
     }
-    const isPro = types.DeviceModels.LIGHT_STRIP_PRO.includes(deviceModel);
-    const isStrip = types.DeviceModels.LIGHT_STRIP.includes(deviceModel);
+    const isPro = DeviceModels.LIGHT_STRIP_PRO.includes(deviceModel);
+    const isStrip = DeviceModels.LIGHT_STRIP.includes(deviceModel);
 
     const validateHex = (v) => {
       if (typeof v !== "string" || !/^[0-9a-fA-F]{6}$/.test(v)) {
@@ -279,7 +284,7 @@ module.exports = {
         deviceModel,
         [
           { pid: PIDs.LIGHTSTRIP_PRO_SUBSECTION, pvalue: subsectionValue },
-          { pid: PIDs.CONTROL_LIGHT, pvalue: String(types.LightControlMode.COLOR) },
+          { pid: PIDs.CONTROL_LIGHT, pvalue: String(LightControlMode.COLOR) },
         ],
         "set_mesh_property"
       );
@@ -295,7 +300,7 @@ module.exports = {
         deviceModel,
         [
           { pid: PIDs.LIGHTSTRIP_PRO_SUBSECTION, pvalue: subsectionValue },
-          { pid: PIDs.CONTROL_LIGHT, pvalue: String(types.LightControlMode.COLOR) },
+          { pid: PIDs.CONTROL_LIGHT, pvalue: String(LightControlMode.COLOR) },
         ],
         "set_mesh_property"
       );
@@ -307,7 +312,7 @@ module.exports = {
         deviceMac,
         deviceModel,
         PIDs.CONTROL_LIGHT,
-        types.LightControlMode.COLOR,
+        LightControlMode.COLOR,
         "set_mesh_property"
       );
     }
@@ -319,14 +324,14 @@ module.exports = {
    * to white-CCT.
    */
   async setBulbColorTemperature(deviceMac, deviceModel, value) {
-    if (types.DeviceModels.MESH_BULB.includes(deviceModel)) {
+    if (DeviceModels.MESH_BULB.includes(deviceModel)) {
       await this.runActionList(deviceMac, deviceModel, PIDs.COLOR_TEMP, value, "set_mesh_property");
-      if (types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+      if (DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
         await this.runActionList(
           deviceMac,
           deviceModel,
           PIDs.CONTROL_LIGHT,
-          types.LightControlMode.TEMPERATURE,
+          LightControlMode.TEMPERATURE,
           "set_mesh_property"
         );
       }

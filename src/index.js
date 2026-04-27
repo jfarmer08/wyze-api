@@ -4,8 +4,6 @@ const axios = require("axios");
 const fs = require("fs").promises;
 const path = require("path");
 const getUuid = require("uuid-by-string");
-const nodeCrypto = require("crypto");
-
 const payloadFactory = require("./payloadFactory");
 const crypto = require("./crypto");
 const constants = require("./constants");
@@ -13,13 +11,7 @@ const util = require("./util");
 const cameraStreamCapture = require("./cameraStreamCapture");
 const types = require("./types");
 
-const {
-  VacuumControlType,
-  VacuumControlValue,
-  VacuumPreferenceType,
-  propertyIds: PIDs,
-  propertyValues: PVals,
-} = types;
+const { propertyIds: PIDs } = types;
 
 module.exports = class WyzeAPI {
   constructor(options) {
@@ -875,62 +867,33 @@ module.exports = class WyzeAPI {
    * @param {string} actionKey - The action key used for the command (for future use).
    * @return {Promise<void>} A promise that resolves when the command is sent or handles errors if the command fails.
    */
-   async localBulbCommand(deviceMac, deviceModel, deviceEnr, deviceIp, propertyId, propertyValue, actionKey) {
-    const plist = [
-      { pid: propertyId, pvalue: String(propertyValue) }
-    ];
-
+  async localBulbCommand(deviceMac, deviceModel, deviceEnr, deviceIp, propertyId, propertyValue) {
     const characteristics = {
-      mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
-      index: '1', // Fixed index value
-      ts: moment().valueOf(), // Current timestamp in milliseconds
-      plist: plist // Property list with the ID and value
+      mac: deviceMac.toUpperCase(),
+      index: "1",
+      ts: Date.now(),
+      plist: [{ pid: propertyId, pvalue: String(propertyValue) }],
     };
 
-    // Convert characteristics object to JSON string
-    const characteristicsStr = JSON.stringify(characteristics, null, 0);
-    console.log(`Characteristics JSON: ${characteristicsStr}`);
-
-    // Encrypt the JSON string
+    const characteristicsStr = JSON.stringify(characteristics);
     const characteristicsEnc = util.wyzeEncrypt(deviceEnr, characteristicsStr);
-    console.log(`Encrypted characteristics: ${characteristicsEnc}`);
+    const payloadStr = JSON.stringify({
+      request: "set_status",
+      isSendQueue: 0,
+      characteristics: characteristicsEnc,
+    }).replace(/\\\\/g, "\\");
 
-    // Create the payload for the request
-    const payload = {
-      request: 'set_status', // Request type
-      isSendQueue: 0, // Flag indicating whether to send the request immediately
-      characteristics: characteristicsEnc // Encrypted characteristics data
-    };
-
-    // Convert payload to JSON string and fix any escaped backslashes
-    const payloadStr = JSON.stringify(payload, null, 0).replace(/\\\\/g, '\\');
-    console.log(`Payload JSON: ${payloadStr}`);
-
-    // Define the URL for the local device request
     const url = `http://${deviceIp}:88/device_request`;
-    console.log(`Sending request to URL: ${url}`);
+    if (this.apiLogEnabled) this.log.info(`localBulbCommand: ${url}`);
 
-    try {
-      // Send the POST request to the local device
-      const response = await axios.post(url, payloadStr, {
-        headers: { 'Content-Type': 'application/json' }
-      });
+    const response = await axios.post(url, payloadStr, {
+      headers: { "Content-Type": "application/json" },
+    });
 
-      // Log the response data
-      console.log(`Response received from device ${deviceMac}:`, response.data);
-    } catch (error) {
-      if (error.response) {
-        // Log the HTTP error details
-        console.warn(`Failed to connect to bulb ${deviceMac}. HTTP status: ${error.response.status}. Response data:`, error.response.data);
-
-        // Handle fallback to cloud
-        console.log(`Attempting to fallback to cloud for device ${deviceMac}.`);
-        await runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey);
-      } else {
-        // Log other types of errors
-        console.error(`Error occurred while sending command to device ${deviceMac}:`, error);
-      }
+    if (this.apiLogEnabled) {
+      this.log.info(`localBulbCommand response from ${deviceMac}: ${JSON.stringify(response.data)}`);
     }
+    return response.data;
   }
 
   async getObjectListSafe() {

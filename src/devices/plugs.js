@@ -1,6 +1,4 @@
-const types = require("../types");
-
-const PIDs = types.propertyIds;
+const { propertyIds: PIDs, DeviceModels } = require("../types");
 
 /**
  * Wyze Plug + Plug Outdoor. Power via P3; timers via shared

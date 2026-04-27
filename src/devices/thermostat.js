@@ -1,5 +1,11 @@
 const payloadFactory = require("../payloadFactory");
-const types = require("../types");
+const {
+  DeviceModels,
+  ThermostatSystemMode,
+  ThermostatFanMode,
+  ThermostatScenarioType,
+  ThermostatComfortBalanceMode,
+} = require("../types");
 
 // Default key sets for Earth-service reads. Mirrors what the thermostat
 // app reads at home-screen render time.
@@ -63,7 +69,7 @@ module.exports = {
   async getThermostatInfo(mac) {
     const devices = await this.getDeviceList();
     const tstat = devices.find(
-      (d) => d.mac === mac && types.DeviceModels.THERMOSTAT.includes(d.product_model)
+      (d) => d.mac === mac && DeviceModels.THERMOSTAT.includes(d.product_model)
     );
     if (!tstat) return null;
 
@@ -92,7 +98,7 @@ module.exports = {
    * Set the system mode — `auto` / `cool` / `heat` / `off`.
    */
   async setThermostatSystemMode(deviceMac, deviceModel, mode) {
-    validateOneOf(mode, types.ThermostatSystemMode, "setThermostatSystemMode");
+    validateOneOf(mode, ThermostatSystemMode, "setThermostatSystemMode");
     return this.thermostatSetIotProp(deviceMac, deviceModel, "mode_sys", mode);
   },
 
@@ -100,7 +106,7 @@ module.exports = {
    * Set the fan mode — `auto` / `circ` / `on`.
    */
   async setThermostatFanMode(deviceMac, deviceModel, mode) {
-    validateOneOf(mode, types.ThermostatFanMode, "setThermostatFanMode");
+    validateOneOf(mode, ThermostatFanMode, "setThermostatFanMode");
     return this.thermostatSetIotProp(deviceMac, deviceModel, "fan_mode", mode);
   },
 
@@ -108,7 +114,7 @@ module.exports = {
    * Set the active scenario — `home` / `away` / `sleep`.
    */
   async setThermostatScenario(deviceMac, deviceModel, scenario) {
-    validateOneOf(scenario, types.ThermostatScenarioType, "setThermostatScenario");
+    validateOneOf(scenario, ThermostatScenarioType, "setThermostatScenario");
     return this.thermostatSetIotProp(deviceMac, deviceModel, "current_scenario", scenario);
   },
 
@@ -152,7 +158,7 @@ module.exports = {
    * Comfort-balance behavior (Settings → Behavior). 1–5.
    */
   async setThermostatComfortBalance(deviceMac, deviceModel, mode) {
-    validateOneOf(mode, types.ThermostatComfortBalanceMode, "setThermostatComfortBalance");
+    validateOneOf(mode, ThermostatComfortBalanceMode, "setThermostatComfortBalance");
     return this.thermostatSetIotProp(deviceMac, deviceModel, "save_comfort_balance", mode);
   },
 

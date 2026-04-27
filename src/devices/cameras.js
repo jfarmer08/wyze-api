@@ -2,11 +2,13 @@ const axios = require("axios");
 const nodeCrypto = require("crypto");
 const crypto = require("../crypto");
 const constants = require("../constants");
-const types = require("../types");
+const {
+  propertyIds: PIDs,
+  propertyValues: PVals,
+  DeviceModels,
+  DeviceMgmtToggleProps,
+} = require("../types");
 const cameraStreamCapture = require("../cameraStreamCapture");
-
-const PIDs = types.propertyIds;
-const PVals = types.propertyValues;
 
 /**
  * Wyze Cameras — controls (power, siren, lights, motion, notifications,
@@ -25,14 +27,14 @@ module.exports = {
   },
 
   async cameraTurnOn(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtRunAction(deviceMac, deviceModel, "power", "wakeup");
     }
     await this.runAction(deviceMac, deviceModel, "power_on");
   },
 
   async cameraTurnOff(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtRunAction(deviceMac, deviceModel, "power", "sleep");
     }
     await this.runAction(deviceMac, deviceModel, "power_off");
@@ -92,14 +94,14 @@ module.exports = {
   },
 
   async cameraSirenOn(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtRunAction(deviceMac, deviceModel, "siren", "siren-on");
     }
     await this.runAction(deviceMac, deviceModel, "siren_on");
   },
 
   async cameraSirenOff(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtRunAction(deviceMac, deviceModel, "siren", "siren-off");
     }
     await this.runAction(deviceMac, deviceModel, "siren_off");
@@ -112,14 +114,14 @@ module.exports = {
   },
 
   async cameraFloodLightOn(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtRunAction(deviceMac, deviceModel, "floodlight", "1");
     }
     await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.ON);
   },
 
   async cameraFloodLightOff(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtRunAction(deviceMac, deviceModel, "floodlight", "0");
     }
     await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.OFF);
@@ -140,14 +142,14 @@ module.exports = {
   // ---- Motion detection (three paths: DeviceMgmt / WCO / standard) --------
 
   async cameraMotionOn(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, types.DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "1"
+        deviceMac, deviceModel, DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "1"
       );
     }
     if (
-      types.DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
-      types.DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
+      DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
+      DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
     ) {
       // Wyze Cam Outdoor (WVOD1 / HL_WCO2) uses a separate PID.
       return this.setProperty(deviceMac, deviceModel, PIDs.WCO_MOTION_DETECTION, "1");
@@ -158,14 +160,14 @@ module.exports = {
   },
 
   async cameraMotionOff(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, types.DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "0"
+        deviceMac, deviceModel, DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "0"
       );
     }
     if (
-      types.DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
-      types.DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
+      DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
+      DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
     ) {
       return this.setProperty(deviceMac, deviceModel, PIDs.WCO_MOTION_DETECTION, "0");
     }
@@ -190,18 +192,18 @@ module.exports = {
   },
 
   async cameraNotificationsOn(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, types.DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "1"
+        deviceMac, deviceModel, DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "1"
       );
     }
     await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "1");
   },
 
   async cameraNotificationsOff(deviceMac, deviceModel) {
-    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+    if (DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
       return this._deviceMgmtSetToggle(
-        deviceMac, deviceModel, types.DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "0"
+        deviceMac, deviceModel, DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "0"
       );
     }
     await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "0");
