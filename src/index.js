@@ -691,6 +691,27 @@ module.exports = class WyzeAPI {
     return result.data;
   }
 
+  /**
+   * Set multiple properties on a device in one call.
+   * Wraps `app/v2/device/set_property_list`. Some props (e.g. mesh-bulb
+   * sun_match) require this endpoint instead of the singular set_property.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {Array<{pid: string, pvalue: string|number|boolean}>} plist
+   */
+  async setPropertyList(deviceMac, deviceModel, plist) {
+    const data = {
+      device_mac: deviceMac,
+      device_model: deviceModel,
+      property_list: plist.map((p) => ({
+        pid: p.pid,
+        pvalue: typeof p.pvalue === "string" ? p.pvalue : String(p.pvalue),
+      })),
+    };
+    const result = await this.request("app/v2/device/set_property_list", data);
+    return result.data;
+  }
+
   // Generic device-side timer primitives. Wyze devices (plugs, bulbs, lights,
   // wall switches) support a server-tracked timer that flips the device on
   // or off after a delay. action_type=1 corresponds to the on/off action.
@@ -2015,10 +2036,16 @@ module.exports = class WyzeAPI {
   }
 
   async cameraTurnOn(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtRunAction(deviceMac, deviceModel, "power", "wakeup");
+    }
     await this.runAction(deviceMac, deviceModel, "power_on");
   }
 
   async cameraTurnOff(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtRunAction(deviceMac, deviceModel, "power", "sleep");
+    }
     await this.runAction(deviceMac, deviceModel, "power_off");
   }
 
@@ -2027,6 +2054,53 @@ module.exports = class WyzeAPI {
    */
   async cameraRestart(deviceMac, deviceModel) {
     return this.runAction(deviceMac, deviceModel, "restart");
+  }
+
+  /**
+   * Recent camera events (motion / sound / face / etc.). Wraps
+   * `app/v2/device/get_event_list`.
+   *
+   * @param {Object} [options]
+   * @param {number}   [options.count=20]
+   * @param {Date|number} [options.beginTime] — defaults to one hour ago
+   * @param {Date|number} [options.endTime]   — defaults to now
+   * @param {string}   [options.deviceMac]    — filter to a single camera
+   * @param {string[]} [options.eventValueList=["1","13","10","12"]] — event types
+   * @param {number}   [options.orderBy=2]    — 2 = reverse-chronological
+   */
+  async getCameraEventList(options = {}) {
+    const {
+      count = 20,
+      beginTime = Date.now() - 60 * 60 * 1000,
+      endTime = Date.now(),
+      deviceMac = "",
+      eventValueList = ["1", "13", "10", "12"],
+      orderBy = 2,
+    } = options;
+    const data = {
+      begin_time: beginTime instanceof Date ? beginTime.getTime() : beginTime,
+      end_time: endTime instanceof Date ? endTime.getTime() : endTime,
+      event_type: "",
+      count,
+      order_by: orderBy,
+      event_value_list: eventValueList,
+      device_mac: deviceMac,
+      device_mac_list: [],
+      event_tag_list: [],
+    };
+    const result = await this.request("app/v2/device/get_event_list", data);
+    return result.data;
+  }
+
+  /**
+   * Account-level push notification toggle. Affects all devices on the
+   * account; per-device toggles still apply on top.
+   * @param {boolean} on
+   */
+  async setPushInfo(on) {
+    const data = { push_switch: on ? "1" : "0" };
+    const result = await this.request("app/user/set_push_info", data);
+    return result.data;
   }
 
   /**
@@ -2048,6 +2122,9 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel
    */
   async cameraSirenOn(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtRunAction(deviceMac, deviceModel, "siren", "siren-on");
+    }
     await this.runAction(deviceMac, deviceModel, "siren_on");
   }
 
@@ -2057,6 +2134,9 @@ module.exports = class WyzeAPI {
    * @param {string} deviceModel
    */
   async cameraSirenOff(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtRunAction(deviceMac, deviceModel, "siren", "siren-off");
+    }
     await this.runAction(deviceMac, deviceModel, "siren_off");
   }
 
@@ -2631,6 +2711,98 @@ module.exports = class WyzeAPI {
     }
   }
 
+  // DeviceMgmt API — used by newer cameras (Floodlight Pro / Battery Cam Pro
+  // / OG cam) that don't respond to the standard run_action endpoint.
+
+  /**
+   * Build the `capabilities` segment for run_action_devicemgmt. Each
+   * camera capability has a fixed shape; type indexes into a small set.
+   */
+  _deviceMgmtBuildCapability(type, value) {
+    switch (type) {
+      case "floodlight":
+        return { iid: 4, name: "floodlight", properties: [{ prop: "on", value }] };
+      case "spotlight":
+        return { iid: 5, name: "spotlight", properties: [{ prop: "on", value }] };
+      case "power":
+        return {
+          functions: [{ in: { "wakeup-live-view": "1" }, name: value }],
+          iid: 1,
+          name: "iot-device",
+        };
+      case "siren":
+        return { functions: [{ in: {}, name: value }], name: "siren" };
+      default:
+        throw new Error(`_deviceMgmtBuildCapability: unsupported type ${type}`);
+    }
+  }
+
+  /**
+   * Run an action on a DeviceMgmt-API camera. Authorization is the bare
+   * access token; no olive signing.
+   */
+  async _deviceMgmtRunAction(deviceMac, deviceModel, type, value) {
+    await this.maybeLogin();
+    const payload = {
+      capabilities: [this._deviceMgmtBuildCapability(type, value)],
+      nonce: Date.now(),
+      targetInfo: {
+        id: deviceMac,
+        productModel: deviceModel,
+        type: "DEVICE",
+      },
+      // OG cam needs this — value is opaque, server doesn't validate.
+      transactionId: nodeCrypto.randomBytes(16).toString("hex"),
+    };
+    const url = "https://devicemgmt-service-beta.wyze.com/device-management/api/action/run_action";
+    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    try {
+      const result = await axios.post(url, payload, {
+        headers: { authorization: this.access_token },
+      });
+      if (this.apiLogEnabled) {
+        this.log.info(`API response DeviceMgmt run_action: ${JSON.stringify(result.data)}`);
+      }
+      return result.data;
+    } catch (e) {
+      this.log.error(`Request failed: ${e.message}`);
+      if (e.response) {
+        this.log.error(
+          `Response DeviceMgmt run_action (${e.response.status} - ${e.response.statusText}): ${JSON.stringify(e.response.data, null, 2)}`
+        );
+      }
+      throw e;
+    }
+  }
+
+  /**
+   * Set a DeviceMgmt camera toggle (event recording / push notifications).
+   * Uses the ai-subscription-service-beta endpoint with olive signing.
+   * @param {string} deviceMac
+   * @param {string} deviceModel
+   * @param {{pageId: string, toggleId: string}} toggleType — see `WyzeAPI.DeviceMgmtToggleProps`
+   * @param {string} state — "1" or "0"
+   */
+  async _deviceMgmtSetToggle(deviceMac, deviceModel, toggleType, state) {
+    const payload = {
+      data: [
+        {
+          device_firmware: "1234567890",
+          device_id: deviceMac,
+          device_model: deviceModel,
+          page_id: [toggleType.pageId],
+          toggle_update: [{ toggle_id: toggleType.toggleId, toggle_status: state }],
+        },
+      ],
+      nonce: String(Date.now()),
+    };
+    return this._oliveSignedPost(
+      "https://ai-subscription-service-beta.wyzecam.com/v4/subscription-service/toggle-management",
+      payload,
+      "DeviceMgmtSetToggle"
+    );
+  }
+
   async iot3GetProperties(deviceMac, deviceModel, props) {
     await this.maybeLogin();
     const payload = payloadFactory.iot3CreateGetPayload(
@@ -2700,6 +2872,9 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the flood light has been turned on.
    */
   async cameraFloodLightOn(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtRunAction(deviceMac, deviceModel, "floodlight", "1");
+    }
     await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.ON);
   }
 
@@ -2711,6 +2886,9 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when the flood light has been turned off.
    */
   async cameraFloodLightOff(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtRunAction(deviceMac, deviceModel, "floodlight", "0");
+    }
     await this.setProperty(deviceMac, deviceModel, PIDs.CAMERA_FLOOD_LIGHT, PVals.CAMERA_FLOOD_LIGHT.OFF);
   }
 
@@ -2756,6 +2934,20 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when motion detection has been turned on.
    */
   async cameraMotionOn(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtSetToggle(
+        deviceMac, deviceModel, types.DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "1"
+      );
+    }
+    if (
+      types.DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
+      types.DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
+    ) {
+      // Wyze Cam Outdoor (WVOD1 / HL_WCO2) uses a separate PID.
+      return this.setProperty(deviceMac, deviceModel, PIDs.WCO_MOTION_DETECTION, "1");
+    }
+    // Standard cameras need both PIDs: the toggle (P1001) and the state (P1047).
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION_STATE, 1);
     await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION, 1);
   }
 
@@ -2767,6 +2959,18 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when motion detection has been turned off.
    */
   async cameraMotionOff(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtSetToggle(
+        deviceMac, deviceModel, types.DeviceMgmtToggleProps.EVENT_RECORDING_TOGGLE, "0"
+      );
+    }
+    if (
+      types.DeviceModels.CAMERA_OUTDOOR.includes(deviceModel) ||
+      types.DeviceModels.CAMERA_OUTDOOR_V2.includes(deviceModel)
+    ) {
+      return this.setProperty(deviceMac, deviceModel, PIDs.WCO_MOTION_DETECTION, "0");
+    }
+    await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION_STATE, 0);
     await this.setProperty(deviceMac, deviceModel, PIDs.MOTION_DETECTION, 0);
   }
 
@@ -2812,6 +3016,11 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when notifications have been turned on.
    */
   async cameraNotificationsOn(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtSetToggle(
+        deviceMac, deviceModel, types.DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "1"
+      );
+    }
     await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "1");
   }
 
@@ -2823,6 +3032,11 @@ module.exports = class WyzeAPI {
    * @return {Promise<void>} A promise that resolves when notifications have been turned off.
    */
   async cameraNotificationsOff(deviceMac, deviceModel) {
+    if (types.DeviceModels.CAMERA_DEVICEMGMT.includes(deviceModel)) {
+      return this._deviceMgmtSetToggle(
+        deviceMac, deviceModel, types.DeviceMgmtToggleProps.NOTIFICATION_TOGGLE, "0"
+      );
+    }
     await this.setProperty(deviceMac, deviceModel, PIDs.NOTIFICATION, "0");
   }
 
@@ -3582,7 +3796,89 @@ module.exports = class WyzeAPI {
    * @param {boolean} enabled
    */
   async setBulbSunMatch(deviceMac, deviceModel, enabled) {
-    return this.setProperty(deviceMac, deviceModel, PIDs.SUN_MATCH, enabled ? "1" : "0");
+    const value = enabled ? "1" : "0";
+    // Mesh color bulbs (WLPA19C) need sun_match via set_property_list
+    // (plural) — set_property (singular) silently no-ops for them.
+    // Light strips and white bulbs work fine with set_property.
+    if (
+      types.DeviceModels.MESH_BULB.includes(deviceModel) &&
+      !types.DeviceModels.LIGHT_STRIP.includes(deviceModel)
+    ) {
+      return this.setPropertyList(deviceMac, deviceModel, [
+        { pid: PIDs.SUN_MATCH, pvalue: value },
+      ]);
+    }
+    return this.setProperty(deviceMac, deviceModel, PIDs.SUN_MATCH, value);
+  }
+
+  /**
+   * Toggle music-sync mode on a light strip. Writes P1535. Independent of
+   * the broader `setBulbEffect` (which writes the full effect plist).
+   * @param {string} deviceMac
+   * @param {string} deviceModel — must be a light strip
+   */
+  async setBulbMusicMode(deviceMac, deviceModel, enabled) {
+    if (!types.DeviceModels.LIGHT_STRIP.includes(deviceModel)) {
+      throw new Error(`setBulbMusicMode: ${deviceModel} is not a light strip`);
+    }
+    return this.runActionList(
+      deviceMac,
+      deviceModel,
+      PIDs.MUSIC_MODE,
+      enabled ? "1" : "0",
+      "set_mesh_property"
+    );
+  }
+
+  async bulbMusicModeOn(device) {
+    return this.setBulbMusicMode(device.mac, device.product_model, true);
+  }
+
+  async bulbMusicModeOff(device) {
+    return this.setBulbMusicMode(device.mac, device.product_model, false);
+  }
+
+  /**
+   * Try a local LAN command on a bulb first, fall back to a cloud action
+   * on failure. Mirrors the local-first flow used by some bridge/proxy
+   * tools — fast on-LAN response when available, cloud safety net when
+   * not.
+   *
+   * The bulb device object must include `enr` (encrypted device key) and
+   * `device_params.ip` — both come from `getObjectList()` / `getDeviceList()`.
+   *
+   * @param {Object} device — full device object from getDeviceList()
+   * @param {string} propertyId — e.g. PIDs.ON
+   * @param {string|number} propertyValue
+   * @param {string} actionKey — e.g. "set_mesh_property"
+   */
+  async bulbLocalOrCloud(device, propertyId, propertyValue, actionKey) {
+    const enr = device?.enr;
+    const ip = device?.device_params?.ip;
+    if (enr && ip) {
+      try {
+        return await this.localBulbCommand(
+          device.mac,
+          device.product_model,
+          enr,
+          ip,
+          propertyId,
+          propertyValue,
+          actionKey
+        );
+      } catch (err) {
+        if (this.apiLogEnabled) {
+          this.log.info(`Local bulb command failed, falling back to cloud: ${err.message}`);
+        }
+      }
+    }
+    return this.runActionList(
+      device.mac,
+      device.product_model,
+      propertyId,
+      propertyValue,
+      actionKey
+    );
   }
 
   /**
@@ -4309,3 +4605,11 @@ module.exports.ThermostatComfortBalanceDescription = types.ThermostatComfortBala
 module.exports.RoomSensorBatteryLevel = types.RoomSensorBatteryLevel;
 module.exports.RoomSensorStatusType = types.RoomSensorStatusType;
 module.exports.RoomSensorStateType = types.RoomSensorStateType;
+module.exports.HVACState = types.HVACState;
+module.exports.HMSStatus = types.HMSStatus;
+module.exports.DeviceMgmtToggleProps = types.DeviceMgmtToggleProps;
+module.exports.IrrigationCropType = types.IrrigationCropType;
+module.exports.IrrigationExposureType = types.IrrigationExposureType;
+module.exports.IrrigationNozzleType = types.IrrigationNozzleType;
+module.exports.IrrigationSlopeType = types.IrrigationSlopeType;
+module.exports.IrrigationSoilType = types.IrrigationSoilType;

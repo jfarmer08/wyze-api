@@ -21,6 +21,13 @@ const propertyIds = Object.freeze({
   SUN_MATCH: "P1528",         // LightProps sun_match (mimic sunlight CCT)
   AWAY_MODE: "P1506",         // LightProps away_mode (light vacation mode)
 
+  // Camera motion-detection prop family. P1001 toggles motion detection
+  // on/off; P1047 holds the current state. Standard cameras need both
+  // written together. WCO/outdoor cams use P1029 instead — see
+  // WCO_MOTION_DETECTION below.
+  MOTION_DETECTION_STATE: "P1047", // alias of MOTION_RECORDING — same PID, dual-purpose
+  WCO_MOTION_DETECTION: "P1029",   // Wyze Cam Outdoor (WVOD1 / HL_WCO2) only
+
   // Light strip visual-effect / music-mode props (used by setBulbEffect).
   LAMP_WITH_MUSIC_RHYTHM: "P1516",
   LAMP_WITH_MUSIC_MODE: "P1522",      // LightVisualEffectModel id
@@ -87,7 +94,12 @@ const DeviceModels = Object.freeze({
   CAMERA_V2: _CAMERA_V2,
   CAMERA_V3: _CAMERA_V3,
   CAMERA_OUTDOOR: _CAMERA_OUTDOOR,
-  CAMERA: [..._CAMERA_V1, ..._CAMERA_V2, ..._CAMERA_V3, ..._CAMERA_OUTDOOR],
+  CAMERA_OUTDOOR_V2: ["HL_WCO2"],
+  // Cameras that use the new devicemgmt-service-beta API (Floodlight Pro,
+  // Battery Cam Pro, OG cam) and don't respond to the standard run_action
+  // endpoint. Cameras in this list need the DeviceMgmt code paths.
+  CAMERA_DEVICEMGMT: ["LD_CFP", "AN_RSCW", "GW_GC1"],
+  CAMERA: [..._CAMERA_V1, ..._CAMERA_V2, ..._CAMERA_V3, ..._CAMERA_OUTDOOR, "HL_WCO2", "LD_CFP", "AN_RSCW", "GW_GC1"],
 
   LOCK: ["YD.LO1"],
   LOCK_GATEWAY: ["YD.GW1"],
@@ -353,6 +365,22 @@ const LockKeyPermissionType = Object.freeze({
   RECURRING: 4,
 });
 
+// Camera DeviceMgmt API toggles (POSTed to ai-subscription-service-beta
+// /v4/subscription-service/toggle-management). Each toggle pairs a page id
+// with a toggle id; the only state that varies is "1"/"0".
+const DeviceMgmtToggleProps = Object.freeze({
+  EVENT_RECORDING_TOGGLE: { pageId: "cam_event_recording", toggleId: "ge.motion_detect_recording" },
+  NOTIFICATION_TOGGLE: { pageId: "cam_device_notify", toggleId: "ge.push_switch" },
+});
+
+// HMS arming states. Wyze treats these as freeform strings on the wire,
+// but exposing the enum lets callers avoid string-typo bugs.
+const HMSStatus = Object.freeze({
+  DISARMED: "off",
+  HOME: "home",
+  AWAY: "away",
+});
+
 // Wyze Thermostat (CO_EA1) — IoT prop value enums for typed setters.
 
 const ThermostatSystemMode = Object.freeze({
@@ -379,6 +407,15 @@ const ThermostatWorkingState = Object.freeze({
   IDLE: "idle",
   HEATING: "heating",
   COOLING: "cooling",
+});
+
+// Read-only — finer-grained HVAC state (includes the transitional
+// CHANGING value the thermostat uses while it's switching modes).
+const HVACState = Object.freeze({
+  IDLE: "idle",
+  HEATING: "heating",
+  COOLING: "cooling",
+  CHANGING: "changing",
 });
 
 const ThermostatTempUnit = Object.freeze({
@@ -420,6 +457,49 @@ const RoomSensorStatusType = Object.freeze({
 const RoomSensorStateType = Object.freeze({
   ONLINE: "connect",
   OFFLINE: "",
+});
+
+// Wyze Sprinkler — zone configuration enums. Used when setting per-zone
+// soil/crop/sun/slope/nozzle attributes so the controller can compute
+// run-time recommendations.
+
+const IrrigationCropType = Object.freeze({
+  COOL_SEASON_GRASS: "cool_season_grass",
+  WARM_SEASON_GRASS: "warm_season_grass",
+  SHRUBS: "shrubs",
+  TREES: "trees",
+  ANNUALS: "annuals",
+  PERENNIALS: "perennials",
+});
+
+const IrrigationExposureType = Object.freeze({
+  LOTS_OF_SUN: "lots_of_sun",
+  SOME_SHADE: "some_shade",
+});
+
+const IrrigationNozzleType = Object.freeze({
+  FIXED_SPRAY_HEAD: "fixed_spray_head",
+  ROTOR_HEAD: "rotor_head",
+  ROTARY_NOZZLE: "rotary_nozzle",
+  MISTER: "mister",
+  BUBBLER: "bubbler",
+  EMITTER: "emitter",
+});
+
+const IrrigationSlopeType = Object.freeze({
+  FLAT: "flat",
+  SLIGHT: "slight",
+  MODERATE: "moderate",
+  STEEP: "steep",
+});
+
+const IrrigationSoilType = Object.freeze({
+  CLAY_LOAM: "clay_loam",
+  CLAY: "clay",
+  SILTY_CLAY: "silty_clay",
+  LOAM: "loam",
+  SANDY_LOAM: "sandy_loam",
+  LOAMY_SAND: "loamy_sand",
 });
 
 // Wyze Robot Vacuum (Venus service) — control type / value / status /
@@ -625,4 +705,12 @@ module.exports = {
   RoomSensorBatteryLevel,
   RoomSensorStatusType,
   RoomSensorStateType,
+  DeviceMgmtToggleProps,
+  HMSStatus,
+  HVACState,
+  IrrigationCropType,
+  IrrigationExposureType,
+  IrrigationNozzleType,
+  IrrigationSlopeType,
+  IrrigationSoilType,
 };
