@@ -194,7 +194,10 @@ async function captureStreamFrame({
   let ws = null;
   let fwdSock = null;
   const cleanup = () => {
-    try { ws?.close(); } catch (_) {}
+    // Silence the WS error event before closing — closing mid-handshake
+    // fires an async "WebSocket was closed before connection was established"
+    // error that would otherwise be an unhandled rejection.
+    try { if (ws) { ws.removeAllListeners("error"); ws.on("error", () => {}); ws.close(); } } catch (_) {}
     try { pc?.close(); } catch (_) {}
     try { fwdSock?.close(); } catch (_) {}
     try { ffmpeg?.kill("SIGKILL"); } catch (_) {}
