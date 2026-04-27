@@ -14,9 +14,17 @@ const types = require("./types");
 const { propertyIds: PIDs } = types;
 
 module.exports = class WyzeAPI {
-  constructor(options) {
-    const Logger = require("@ptkdev/logger");
-    this.log = new Logger();
+  constructor(options, log) {
+    if (log) {
+      this.log = {
+        info: (...a) => log(...a),
+        warning: (...a) => log.warn(...a),
+        error: (...a) => log.error(...a),
+      };
+    } else {
+      const Logger = require("@ptkdev/logger");
+      this.log = new Logger();
+    }
     this.persistPath = options.persistPath;
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false;
     this.lowBatteryPercentage = options.lowBatteryPercentage || 30;
