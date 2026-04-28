@@ -26,20 +26,22 @@
 const LEVELS = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });
 
 const COLORS = {
-  reset:  "\x1b[0m",
-  red:    "\x1b[31m",
-  green:  "\x1b[32m",
-  yellow: "\x1b[33m",
-  blue:   "\x1b[34m",
-  cyan:   "\x1b[36m",
-  bold:   "\x1b[1m",
+  reset:   "\x1b[0m",
+  red:     "\x1b[31m",
+  green:   "\x1b[32m",
+  yellow:  "\x1b[33m",
+  magenta: "\x1b[35m",
+  cyan:    "\x1b[36m",
+  bold:    "\x1b[1m",
 };
 
 const LEVEL_TAGS = {
   error: { label: "ERROR", color: COLORS.red + COLORS.bold },
   warn:  { label: "WARN",  color: COLORS.yellow },
   info:  { label: "INFO",  color: COLORS.green },
-  debug: { label: "DEBUG", color: COLORS.blue },
+  // DEBUG was blue but the cyan prefix clashed — magenta keeps debug
+  // visually distinct from prefix, info, warn, and error.
+  debug: { label: "DEBUG", color: COLORS.magenta },
 };
 
 class WyzeLogger {
