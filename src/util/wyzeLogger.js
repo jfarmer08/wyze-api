@@ -28,17 +28,17 @@ const LEVELS = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });
 const COLORS = {
   reset:  "\x1b[0m",
   red:    "\x1b[31m",
+  green:  "\x1b[32m",
   yellow: "\x1b[33m",
-  cyan:   "\x1b[36m",
-  gray:   "\x1b[90m",
+  blue:   "\x1b[34m",
   bold:   "\x1b[1m",
 };
 
 const LEVEL_TAGS = {
   error: { label: "ERROR", color: COLORS.red + COLORS.bold },
   warn:  { label: "WARN ", color: COLORS.yellow },
-  info:  { label: "INFO ", color: COLORS.cyan },
-  debug: { label: "DEBUG", color: COLORS.gray },
+  info:  { label: "INFO ", color: COLORS.green },
+  debug: { label: "DEBUG", color: COLORS.blue },
 };
 
 class WyzeLogger {
