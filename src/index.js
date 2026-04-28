@@ -1132,3 +1132,5 @@ module.exports.IrrigationNozzleType = types.IrrigationNozzleType;
 module.exports.IrrigationSlopeType = types.IrrigationSlopeType;
 module.exports.IrrigationSoilType = types.IrrigationSoilType;
 module.exports.propertyIds = types.propertyIds;
+module.exports.WyzeAccessoryModels = types.WyzeAccessoryModels;
+module.exports.DeviceModels = types.DeviceModels;

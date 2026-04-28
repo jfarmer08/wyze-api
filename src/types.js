@@ -642,6 +642,55 @@ const VacuumIotPropKeys = Object.freeze([
   "main_brush",
 ]);
 
+// ---- Accessory routing models -------------------------------------------
+//
+// Flat name → product_model maps used by the homebridge plugin (and any
+// other consumer that needs to know "which Wyze model maps to which
+// HomeKit accessory class"). Distinct from `DeviceModels` above, which
+// groups model codes by capability/family — these are organized per
+// homebridge accessory handler. Source of truth for the plugin's
+// per-accessory routing.
+const WyzeAccessoryModels = Object.freeze({
+  CameraModels: Object.freeze({
+    WyzeCamv1Hd:           "WYZEC1",
+    WyzeCamV2:             "WYZEC1-JZ",
+    WyzeCamV3:             "WYZE_CAKP2JFUS",
+    WyzeCamV3Pro:          "HL_CAM3P",
+    WyzeCamV4:             "HL_CAM4",
+    WyzeCamFloodlight:     "WYZE_CAKP2JFUS",
+    WyzeCamFloodlightPro:  "LD_CFP",
+    WyzeCamPan:            "WYZECP1_JEF",
+    WyzeCamPanv2:          "HL_PAN2",
+    WyzeCamPanv3:          "HL_PAN3",
+    WyzeCamPanPro:         "HL_PANP",
+    WyzeCamOutdoor:        "WVOD1",
+    WyzeCamOutdoor2:       "HL_WCO2",
+    WyzeCamDoorbell:       "WYZEDB3",
+    WyzeCamDoorbellPro:    "GW_BE1",
+    WyzeCamDoorbellPro2:   "AN_RDB1",
+    WyzeBatteryCamPro:     "AN_RSCW",
+    WyzeCamOG:             "GW_GC1",
+    WyzeCamOGTelephoto3x:  "GW_GC",
+  }),
+  OutdoorPlugModels:           Object.freeze({ WLPPOSUB: "WLPPO-SUB" }),
+  PlugModels:                  Object.freeze({ WLPP1: "WLPP1", WLPP1CFH: "WLPP1CFH" }),
+  LightModels:                 Object.freeze({ BULB_WHITE: "WLPA19", BULB_WHITE_V2: "HL_HWB2" }),
+  MeshLightModels:             Object.freeze({ MESH_BULB: "WLPA19C", HL_BR30C: "HL_BR30C", HL_A19C2: "HL_A19C2" }),
+  LightStripModels:            Object.freeze({ LIGHT_STRIP: "HL_LSL", LIGHT_STRIP_PRO: "HL_LSLP" }),
+  ContactSensorModels:         Object.freeze({ V1: "DWS2U", V2: "DWS3U" }),
+  MotionSensorModels:          Object.freeze({ V1: "PIR2U", V2: "PIR3U" }),
+  LockModels:                  Object.freeze({ YDLO1: "YD.LO1" }),
+  LockBoltV2Models:            Object.freeze({ DX_LB2: "DX_LB2", DX_PVLOC: "DX_PVLOC" }),
+  TemperatureHumidityModels:   Object.freeze({ TH3U: "TH3U" }),
+  LeakSensorModels:            Object.freeze({ WS3U: "WS3U" }),
+  CommonModels:                Object.freeze({ LightSwitch: "LD_SS1", Palm: "DX_PVLOC" }),
+  S1GatewayModels:             Object.freeze({ GW3U: "GW3U" }),
+  ThermostatModels:            Object.freeze({ CO_EA1: "CO_EA1" }),
+  ThermostatRoomSensor:        Object.freeze({ CO_TH1: "CO_TH1" }),
+  VacuumModels:                Object.freeze({ JA_RO2: "JA_RO2" }),
+  IrrigationModels:            Object.freeze({ BS_WK1: "BS_WK1" }),
+});
+
 const VacuumDeviceInfoKeys = Object.freeze([
   "mac",
   "ipaddr",
@@ -653,6 +702,7 @@ module.exports = {
   propertyIds,
   propertyValues,
   DeviceModels,
+  WyzeAccessoryModels,
   wyzeWallSwitch,
   wyzeColorProperty,
   homeKitColorProperty,
