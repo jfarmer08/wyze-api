@@ -47,7 +47,6 @@ jobs:
             echo "Either bump package.json to e.g. 2.0.0-beta.1, or uncheck the Pre-release box (and use the stable workflow)."
             exit 1
           fi
-      - run: npm ci
 
   publish:
     needs: guard

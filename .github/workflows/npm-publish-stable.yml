@@ -42,7 +42,6 @@ jobs:
             echo "Either uncheck the 'Pre-release' box in the GitHub release UI, or rename the package.json version to a stable identifier."
             exit 1
           fi
-      - run: npm ci
 
   publish:
     needs: guard
