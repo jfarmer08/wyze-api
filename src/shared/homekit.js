@@ -339,19 +339,25 @@ module.exports = {
   },
 
   /**
-   * Clamp HomeKit brightness to 1–100. Currently a passthrough.
+   * Clamp HomeKit Brightness characteristic to its valid 1–100 range.
+   * HomeKit rejects brightness values outside this band; clamp defensively
+   * so a misreporting Wyze bulb can't poison the characteristic.
    */
   checkBrightnessValue(value) {
-    if (value >= 1 && value <= 100) return value;
-    return value;
+    if (typeof value !== "number" || Number.isNaN(value)) return 1;
+    return Math.max(1, Math.min(100, Math.round(value)));
   },
 
   /**
-   * Floor HomeKit ColorTemperature characteristic at 500 mireds.
+   * Clamp HomeKit ColorTemperature characteristic to its valid range.
+   * HomeKit's ColorTemperature is in mireds (140 = ~7142K coolest,
+   * 500 = 2000K warmest). Values outside [140, 500] are rejected; clamp
+   * defensively so a Wyze color-temp report just outside the band still
+   * lands on the closest valid HomeKit value.
    */
   checkColorTemp(color) {
-    if (color >= 500) return 500;
-    return color;
+    if (typeof color !== "number" || Number.isNaN(color)) return HOMEKIT_COLOR_TEMP_MIN;
+    return Math.max(HOMEKIT_COLOR_TEMP_MIN, Math.min(HOMEKIT_COLOR_TEMP_MAX, color));
   },
 
   // ---- Lock / door / leak state aliases -----------------------------------
