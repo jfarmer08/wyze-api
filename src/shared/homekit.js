@@ -166,6 +166,42 @@ module.exports = {
     return Math.round(((fahrenheit - 32) / 1.8) * 10) / 10;
   },
 
+  /**
+   * Wyze Thermostat Room Sensor (CO_TH1) reports temperature in tenths of °F
+   * (e.g. 712 = 71.2°F). Convert directly to HomeKit °C.
+   */
+  wyzeRoomSensorTemperatureToHomeKit(tenthsFahrenheit) {
+    if (typeof tenthsFahrenheit !== "number") return null;
+    const fahrenheit = tenthsFahrenheit / 10;
+    return Math.round(((fahrenheit - 32) / 1.8) * 10) / 10;
+  },
+
+  /**
+   * Wyze Room Sensor battery enum → HomeKit BatteryLevel percentage.
+   *   1 EMPTY → 5, 2 LOW → 25, 3 HALF → 60, 4 FULL → 100, anything else → null.
+   * Returning null lets callers skip pushing a misleading default to HomeKit.
+   */
+  wyzeRoomSensorBatteryToHomeKit(level) {
+    switch (level) {
+      case 1: return 5;   // EMPTY
+      case 2: return 25;  // LOW
+      case 3: return 60;  // HALF
+      case 4: return 100; // FULL
+      default: return null;
+    }
+  },
+
+  /**
+   * Wyze Room Sensor battery enum → HomeKit StatusLowBattery (0 or 1).
+   * Uses the enum directly (1 EMPTY or 2 LOW → low) rather than the
+   * configurable lowBatteryPercentage, because the enum is the device's
+   * own qualitative judgment — overriding it with a voltage threshold
+   * doesn't make sense for a 4-level reading.
+   */
+  wyzeRoomSensorBatteryIsLow(level) {
+    return level === 1 || level === 2 ? 1 : 0;
+  },
+
   // ---- Battery / brightness validators -----------------------------------
 
   /**
