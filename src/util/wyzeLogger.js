@@ -42,11 +42,19 @@ const LEVEL_TAGS = {
 };
 
 class WyzeLogger {
-  constructor({ level = "info", prefix = "Wyze", stream } = {}) {
+  constructor({ level = "info", prefix = "Wyze", stream, color } = {}) {
     this.setLevel(level);
     this.prefix = prefix;
     this.stream = stream || process.stdout;
-    this.useColor = Boolean(this.stream.isTTY);
+    // Colors on by default — homebridge's log pipeline + most modern
+    // terminals handle ANSI escape codes fine, and isTTY is false when
+    // running under hb-service so a TTY-only check would strip colors
+    // exactly when users want them. Honors the de-facto NO_COLOR env
+    // var (https://no-color.org/) for users on log viewers that don't
+    // strip ANSI. Explicit `color: false` in the constructor wins.
+    if (color === false) this.useColor = false;
+    else if (color === true) this.useColor = true;
+    else this.useColor = !process.env.NO_COLOR;
   }
 
   setLevel(level) {
