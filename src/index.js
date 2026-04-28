@@ -35,7 +35,7 @@ module.exports = class WyzeAPI {
       : (options.apiLogEnabled ? "debug" : "info");
     this.logLevel = LOG_LEVELS[requestedLevel] != null ? requestedLevel : "info";
 
-    this.log = new WyzeLogger({ level: this.logLevel, prefix: options.logPrefix || "Wyze" });
+    this.log = new WyzeLogger({ level: this.logLevel, prefix: options.logPrefix || "Wyze API" });
     this.persistPath = options.persistPath;
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false;
     this.lowBatteryPercentage = options.lowBatteryPercentage || 30;

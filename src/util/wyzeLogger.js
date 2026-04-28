@@ -31,18 +31,19 @@ const COLORS = {
   green:  "\x1b[32m",
   yellow: "\x1b[33m",
   blue:   "\x1b[34m",
+  cyan:   "\x1b[36m",
   bold:   "\x1b[1m",
 };
 
 const LEVEL_TAGS = {
   error: { label: "ERROR", color: COLORS.red + COLORS.bold },
-  warn:  { label: "WARN ", color: COLORS.yellow },
-  info:  { label: "INFO ", color: COLORS.green },
+  warn:  { label: "WARN",  color: COLORS.yellow },
+  info:  { label: "INFO",  color: COLORS.green },
   debug: { label: "DEBUG", color: COLORS.blue },
 };
 
 class WyzeLogger {
-  constructor({ level = "info", prefix = "Wyze", stream, color } = {}) {
+  constructor({ level = "info", prefix = "Wyze API", stream, color } = {}) {
     this.setLevel(level);
     this.prefix = prefix;
     this.stream = stream || process.stdout;
@@ -87,8 +88,13 @@ class WyzeLogger {
 
     const tag = LEVEL_TAGS[level];
     const tagText = `[${tag.label}]`;
-    const tagOut = this.useColor ? `${tag.color}${tagText}${COLORS.reset}` : tagText;
-    return `[${ts}] [${this.prefix}] ${tagOut} ${message}\n`;
+    const prefixText = `[${this.prefix}]`;
+    if (this.useColor) {
+      // Cyan prefix matches homebridge's "[PluginName]" coloring so the
+      // line blends in with everything else in the log panel.
+      return `[${ts}] ${COLORS.cyan}${prefixText}${COLORS.reset} ${tag.color}${tagText}${COLORS.reset} ${message}\n`;
+    }
+    return `[${ts}] ${prefixText} ${tagText} ${message}\n`;
   }
 
   _emit(level, args) {
