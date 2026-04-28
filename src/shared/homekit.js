@@ -88,6 +88,73 @@ module.exports = {
     return unit === "F" ? 1 : 0;
   },
 
+  // ---- Generic temperature math ------------------------------------------
+
+  /**
+   * Fahrenheit → Celsius. Pure passthrough — preserves precision.
+   * Use `wyzeTemperatureToHomeKit` instead when you also want HomeKit's
+   * one-decimal rounding.
+   */
+  fahrenheitToCelsius(f) {
+    return (f - 32) / 1.8;
+  },
+
+  /**
+   * Celsius → Fahrenheit.
+   */
+  celsiusToFahrenheit(c) {
+    return c * 1.8 + 32;
+  },
+
+  // ---- Garage door --------------------------------------------------------
+
+  /**
+   * Wyze garage-door P1301 value → HomeKit CurrentDoorState / TargetDoorState.
+   *   1 (open) → 0 (OPEN), anything else → 1 (CLOSED)
+   * HomeKit's CurrentDoorState also has OPENING (2) and CLOSING (3) but
+   * Wyze doesn't report transition states.
+   */
+  wyzeGarageDoorStateToHomeKit(value) {
+    return value == 1 ? 0 : 1;
+  },
+
+  // ---- Vacuum -------------------------------------------------------------
+
+  /**
+   * Wyze vacuum suction level (1=quiet / 2=standard / 3=strong) → HomeKit
+   * RotationSpeed percentage (0–100). Rounds to clean third-of-100 buckets
+   * so the HomeKit slider lands on visually-pleasing positions.
+   *   1 → 33, 2 → 67, 3 → 100, anything else → 0.
+   */
+  wyzeVacuumSuctionToHomeKit(level) {
+    switch (level) {
+      case 1: return 33;
+      case 2: return 67;
+      case 3: return 100;
+      default: return 0;
+    }
+  },
+
+  /**
+   * HomeKit RotationSpeed (0–100) → Wyze vacuum suction level (1–3).
+   * Splits the 0–100 range into three equal thirds. Speed 0 maps to 1
+   * (we don't expose "off via suction"; off goes through the Active
+   * characteristic instead).
+   */
+  homeKitRotationSpeedToWyzeSuction(speed) {
+    if (speed <= 33) return 1;
+    if (speed <= 66) return 2;
+    return 3;
+  },
+
+  /**
+   * Wyze vacuum mode-name string → boolean "is currently cleaning".
+   * The fan-service Active characteristic flips when this is true.
+   */
+  wyzeVacuumModeIsCleaning(modeName) {
+    return modeName === "CLEANING" || modeName === "MAPPING";
+  },
+
   // ---- Color (HEX ↔ HSV) --------------------------------------------------
 
   /**
