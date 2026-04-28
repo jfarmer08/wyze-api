@@ -1,6 +1,29 @@
 # wyze-api
 
 ## Releases
+### v2.0.0-beta.1
+
+First 2.0 beta. Available on npm only via `npm install wyze-api@beta`. Stable users on the default `latest` tag are unaffected. Pairs with `homebridge-wyze-smart-home@2.0.0-beta.1`.
+
+#### Breaking
+- **Logger replaced.** `@ptkdev/logger` removed; new `WyzeLogger` (in `src/util/wyzeLogger.js`) produces homebridge-styled output (timestamp, cyan prefix, color-coded level tag). Constructor option `logLevel: "error" | "warn" | "info" | "debug"` is now the canonical control. Legacy `apiLogEnabled: true` still works (maps to `debug`). New option `redact: false` to bypass log redaction for self-debugging — never share resulting logs.
+- **Security utilities consolidated.** `src/util/redact.js` and `src/securityHardening.js` have been merged into `src/util/security.js`. Re-exports preserved where they were public (`installRedirectGuard`, `sanitizeLogMessage`, `WYZE_ALLOWED_HOSTNAMES`, etc.) — most call sites should be unaffected.
+- **All base URLs centralized in `constants.js`.** Hardcoded URLs were removed from `services/`, `devices/hms.js`, and `index.js`. The redirect-guard hostname allowlist is now derived from any `*BaseUrl` constant — adding a new endpoint allowlists it for free.
+- **Unused dependencies removed.** `aws-sdk`, `base64-js`, `colorsys`, `crypto-js`, `moment`, `urllib`. None of these were referenced in source. Cleared the critical `crypto-js` PBKDF2 advisory and the `aws-sdk` → `ip` SSRF chain.
+
+#### Reliability fixes
+- **Refresh-token failure now falls back to a fresh `login()`.** Wyze invalidates refresh tokens server-side faster than the documented TTL; the previous behavior left the plugin in a broken state until the host process restarted. Now: clear tokens, re-login with stored credentials, single warn line, normal operation resumes.
+- **`mkdir -p` token persist directory before write.** HOOBS doesn't pre-create its persist dir like homebridge does, so the first write threw `ENOENT` and the plugin never recovered.
+- **`wyzeColorToHomeKit` guards bad input.** Wyze occasionally returned `null` / `""` / non-hex for `PID_COLOR` during state transitions; the previous parse threw and (in some host configs) crashed the process. Now returns neutral `{hue:0, saturation:0}` on bad input — true color picked up on next refresh.
+
+#### New
+- **`getVacuumRooms(mac)`** — returns the current map's room list as plain JSON `[{ id, name, mapId, mapName }]`. Backs the new per-room sweep switches in the bridge.
+- **`getVacuumInfo(mac)` always fetches position + map.** Was previously gated behind an `includeMap: true` flag that nobody passed. Each sub-fetch is still wrapped in `safe()` so a failing endpoint doesn't lose the rest.
+- `axios` floor bumped to `^1.12.0` (clears SSRF / DoS / CSRF / mergeConfig `__proto__` advisories).
+
+#### Internal
+- 178/178 tests pass. Remaining production audit: 4 issues in the `werift` WebRTC chain (transitive `ip` + `uuid`); no upstream fix available, deferred.
+
 ### v1.1.11
 - Add Wyze Robot Vacuum support (model `JA_RO2`) via the Venus service. Resolves [#4](https://github.com/jfarmer08/wyze-api/issues/4). Patterned after [shauntarves/wyze-sdk](https://github.com/shauntarves/wyze-sdk/blob/master/wyze_sdk/api/devices/vacuums.py).
 - Venus auth/signing: new `venusGenerateDynamicSignature` and `venusRequestId` crypto helpers; new `venusBaseUrl`, `venusAppId`, `venusSigningSecret`, `vacuumModels`, `venusPluginVersion`, `vacuumFirmwareVersion`, `vacuumEventTrackingUuid` constants.

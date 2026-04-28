@@ -1,0 +1,85 @@
+# Beta npm release: publishes to the `beta` tag.
+#
+# Trigger: GitHub release published WITH the "Pre-release" checkbox.
+# Stable releases (checkbox unchecked) are handled by npm-publish-stable.yml.
+#
+# Users on `npm install wyze-api` keep getting whatever's on `latest` —
+# `beta` releases are only seen by users who explicitly opt in with
+# `npm install wyze-api@beta`.
+#
+# Safeguards:
+#   * Version in package.json MUST contain `-beta.` (or `-alpha.` / `-rc.`)
+#   * Version must not already be on npm
+#   * NPM_TOKEN secret must be present and valid
+
+name: npm publish (beta)
+
+on:
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # Only run for releases marked as pre-release. Manual dispatch always
+    # runs (use workflow_dispatch when re-publishing a beta after fixing
+    # something — handy if the original release event was already consumed).
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == true }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Read package version
+        id: read
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Require pre-release identifier
+        run: |
+          VERSION="${{ steps.read.outputs.version }}"
+          if [[ "$VERSION" != *-beta.* ]] && [[ "$VERSION" != *-alpha.* ]] && [[ "$VERSION" != *-rc.* ]]; then
+            echo "Version $VERSION has no pre-release identifier (e.g. -beta.1) but the GitHub release is marked Pre-release."
+            echo "Either bump package.json to e.g. 2.0.0-beta.1, or uncheck the Pre-release box (and use the stable workflow)."
+            exit 1
+          fi
+      - run: npm ci
+
+  publish:
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          always-auth: true
+      - run: npm ci
+      - name: Ensure NPM_TOKEN is configured
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret is missing. Add a granular npm token with Bypass 2FA enabled."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Validate npm auth
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Validate version is unpublished
+        run: |
+          VERSION="${{ needs.guard.outputs.version }}"
+          if npm view "wyze-api@$VERSION" version >/dev/null 2>&1; then
+            echo "Version $VERSION is already published to npm. Bump package.json version first."
+            exit 1
+          fi
+          echo "Publishing wyze-api@$VERSION to beta tag"
+      - run: npm publish --access public --tag beta
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

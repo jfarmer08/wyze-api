@@ -1,0 +1,80 @@
+# Stable npm release: publishes to the `latest` tag.
+#
+# Trigger: GitHub release published WITHOUT the "Pre-release" checkbox.
+# Beta releases (checkbox checked) are handled by npm-publish-beta.yml.
+#
+# Safeguards:
+#   * Version in package.json must NOT contain `-beta.`
+#   * Version must not already be on npm
+#   * NPM_TOKEN secret must be present and valid
+
+name: npm publish (stable)
+
+on:
+  workflow_dispatch: {}
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  guard:
+    # Skip this workflow entirely if the release is marked as pre-release —
+    # that path is handled by npm-publish-beta.yml.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.release.prerelease == false }}
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.read.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Read package version
+        id: read
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Refuse beta version on stable workflow
+        run: |
+          VERSION="${{ steps.read.outputs.version }}"
+          if [[ "$VERSION" == *-beta.* ]] || [[ "$VERSION" == *-alpha.* ]] || [[ "$VERSION" == *-rc.* ]]; then
+            echo "Version $VERSION is a pre-release identifier (-beta./-alpha./-rc.) but the GitHub release is marked stable."
+            echo "Either uncheck the 'Pre-release' box in the GitHub release UI, or rename the package.json version to a stable identifier."
+            exit 1
+          fi
+      - run: npm ci
+
+  publish:
+    needs: guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org/
+          always-auth: true
+      - run: npm ci
+      - name: Ensure NPM_TOKEN is configured
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "NPM_TOKEN secret is missing. Add a granular npm token with Bypass 2FA enabled."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Validate npm auth
+        run: npm whoami
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Validate version is unpublished
+        run: |
+          VERSION="${{ needs.guard.outputs.version }}"
+          if npm view "wyze-api@$VERSION" version >/dev/null 2>&1; then
+            echo "Version $VERSION is already published to npm. Bump package.json version first."
+            exit 1
+          fi
+          echo "Publishing wyze-api@$VERSION to latest"
+      - run: npm publish --access public --tag latest
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
