@@ -581,6 +581,21 @@ module.exports = class WyzeAPI {
           // Wait before retrying
           await this.sleepSeconds(2); // Sleep for 2 seconds before retrying
         } else {
+          // Wyze invalidates refresh tokens server-side faster than the
+          // documented TTL — this fails for many users a few hours into
+          // a session. Rather than leaving the plugin in a broken state
+          // until the user restarts homebridge, fall back to a fresh
+          // login with the stored credentials. Same flow the user would
+          // have hit on cold start anyway.
+          if (this.username && this.password && this.keyId && this.apiKey) {
+            this.log.warn(
+              `Token refresh failed (${error.message}). Falling back to a fresh login.`
+            );
+            this.access_token = "";
+            this.refresh_token = "";
+            await this.login();
+            return;
+          }
           this.log.error(`Error during token refresh: ${error.message}`);
           throw new Error(`Token refresh failed: ${error.message}`);
         }
