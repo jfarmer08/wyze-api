@@ -639,6 +639,10 @@ module.exports = class WyzeAPI {
     while (attempt < maxRetries) {
       try {
                   this.log.debug(`Persisting tokens @ ${tokenPath}`);
+        // Ensure the persist directory exists. HOOBS doesn't pre-create
+        // its own /var/lib/hoobs/.../persist dir, so the first write
+        // here was throwing ENOENT and the plugin never recovered.
+        await fs.mkdir(path.dirname(tokenPath), { recursive: true });
         await fs.writeFile(tokenPath, JSON.stringify(data)); // Write tokens to the file.
         return; // Exit if successful.
       } catch (error) {
