@@ -166,6 +166,15 @@ module.exports = {
    * @returns {{ hue: number, saturation: number }}
    */
   wyzeColorToHomeKit(hex) {
+    // Wyze occasionally returns null / undefined / a short string for
+    // PID_COLOR (mesh bulbs returning "" while transitioning, firmware
+    // tantrums, etc.). Without this guard the unwrap below throws and
+    // takes down the plugin's child process — we've seen this present
+    // as a crash loop because homebridge restarts and the next refresh
+    // immediately re-triggers the same bad value.
+    if (typeof hex !== "string" || !/^[0-9a-fA-F]{6}$/.test(hex)) {
+      return { hue: 0, saturation: 0 };
+    }
     const r = parseInt(hex.slice(0, 2), 16) / 255;
     const g = parseInt(hex.slice(2, 4), 16) / 255;
     const b = parseInt(hex.slice(4, 6), 16) / 255;
