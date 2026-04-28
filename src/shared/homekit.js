@@ -202,6 +202,54 @@ module.exports = {
     return level === 1 || level === 2 ? 1 : 0;
   },
 
+  // ---- HMS (Home Monitoring System) --------------------------------------
+  //
+  // HomeKit SecuritySystemTargetState:
+  //   STAY_ARM = 0, AWAY_ARM = 1, NIGHT_ARM = 2, DISARM = 3
+  // HomeKit SecuritySystemCurrentState:
+  //   STAY_ARM = 0, AWAY_ARM = 1, NIGHT_ARM = 2, DISARMED = 3, ALARM_TRIGGERED = 4
+  // Wyze HMS modes (strings): "home" / "away" / "disarm" / "changing" / "off"
+
+  /**
+   * Wyze HMS mode string → HomeKit SecuritySystemTargetState (0–3).
+   * Unknown / "changing" / "disarm" all collapse to DISARM (3) so HomeKit
+   * never gets a numeric value it doesn't understand. "Changing" means a
+   * mode transition is in progress — DISARM is the safest interim display.
+   */
+  wyzeHmsStateToHomeKit(hmsState) {
+    switch (hmsState) {
+      case "home":     return 0; // STAY_ARM
+      case "away":     return 1; // AWAY_ARM
+      case "disarm":
+      case "changing":
+      case "off":
+      default:         return 3; // DISARM
+    }
+  },
+
+  /**
+   * HomeKit SecuritySystemTargetState (0–3) → Wyze HMS mode string.
+   * NIGHT_ARM (2) collapses to "home" since Wyze HMS doesn't have a
+   * separate night-arm mode. ALARM_TRIGGERED (4) — sent by HomeKit only
+   * when forwarding a fired alarm, not as a user-set target — maps to ""
+   * to preserve the original behavior of being a no-op.
+   */
+  homeKitHmsStateToWyze(homeKitState) {
+    switch (homeKitState) {
+      case 0: // STAY_ARM
+      case 2: // NIGHT_ARM
+        return "home";
+      case 1: // AWAY_ARM
+        return "away";
+      case 3: // DISARM
+        return "off";
+      case 4: // ALARM_TRIGGERED
+        return "";
+      default:
+        return "off";
+    }
+  },
+
   // ---- Battery / brightness validators -----------------------------------
 
   /**
