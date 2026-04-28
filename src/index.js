@@ -10,7 +10,7 @@ const constants = require("./constants");
 const util = require("./util");
 const cameraStreamCapture = require("./devices/cameraStreamCapture");
 const types = require("./types");
-const { installRedirectGuard, WYZE_ALLOWED_HOSTNAMES } = require("./securityHardening");
+const { installRedirectGuard, WYZE_ALLOWED_HOSTNAMES } = require("./util/security");
 
 // Install once at module load: blocks redirects on any axios request bound for
 // known Wyze hostnames so a 3xx can never silently send the bearer token to
@@ -35,7 +35,13 @@ module.exports = class WyzeAPI {
       : (options.apiLogEnabled ? "debug" : "info");
     this.logLevel = LOG_LEVELS[requestedLevel] != null ? requestedLevel : "info";
 
-    this.log = new WyzeLogger({ level: this.logLevel, prefix: options.logPrefix || "Wyze API" });
+    this.log = new WyzeLogger({
+      level: this.logLevel,
+      prefix: options.logPrefix || "Wyze API",
+      // Opt-in escape hatch for users who need raw payloads in their own
+      // debug captures. Off by default — never set true in shared logs.
+      redact: options.disableLogRedaction !== true,
+    });
     this.persistPath = options.persistPath;
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false;
     this.lowBatteryPercentage = options.lowBatteryPercentage || 30;
@@ -847,7 +853,7 @@ module.exports = class WyzeAPI {
     const keys = "iot_state,switch-power,switch-iot,single_press_type,double_press_type,triple_press_type,long_press_type,palm-state";
     const payload = payloadFactory.oliveCreateGetPayload(deviceMac, keys);
     return this._oliveSignedGet(
-      "https://wyze-sirius-service.wyzecam.com/plugin/sirius/get_iot_prop",
+      `${constants.siriusBaseUrl}/plugin/sirius/get_iot_prop`,
       payload,
       "GetIotProp"
     );
@@ -856,7 +862,7 @@ module.exports = class WyzeAPI {
   async setIotProp(deviceMac, product_model, propKey, value) {
     const payload = payloadFactory.oliveCreatePostPayload(deviceMac, product_model, propKey, value);
     return this._oliveSignedPost(
-      "https://wyze-sirius-service.wyzecam.com/plugin/sirius/set_iot_prop_by_topic",
+      `${constants.siriusBaseUrl}/plugin/sirius/set_iot_prop_by_topic`,
       payload,
       "SetIotProp"
     );
@@ -865,7 +871,7 @@ module.exports = class WyzeAPI {
   async getUserProfile() {
     const payload = payloadFactory.oliveCreateUserInfoPayload();
     return this._oliveSignedGet(
-      "https://wyze-platform-service.wyzecam.com/app/v2/platform/get_user_profile",
+      `${constants.platformBaseUrl}/app/v2/platform/get_user_profile`,
       payload,
       "GetUserProfile"
     );

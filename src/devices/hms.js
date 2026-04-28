@@ -1,4 +1,5 @@
 const payloadFactory = require("../utils/payloadFactory");
+const constants = require("../constants");
 
 /**
  * Wyze Home Monitoring System (HMS).
@@ -12,7 +13,7 @@ module.exports = {
   // ---- Low-level endpoints --------------------------------------------------
 
   async disableRemeAlarm(hms_id) {
-    return this._hmsRequest("delete", "https://hms.api.wyze.com/api/v1/reme-alarm", {
+    return this._hmsRequest("delete", `${constants.hmsBaseUrl}/api/v1/reme-alarm`, {
       body: { hms_id, remediation_id: "emergency" },
       label: "DisableRemeAlarm",
     });
@@ -21,7 +22,7 @@ module.exports = {
   async getPlanBindingListByUser() {
     const payload = payloadFactory.oliveCreateHmsPayload();
     return this._oliveSignedGet(
-      "https://wyze-membership-service.wyzecam.com/platform/v2/membership/get_plan_binding_list_by_user",
+      `${constants.membershipBaseUrl}/platform/v2/membership/get_plan_binding_list_by_user`,
       payload,
       "GetPlanBindingListByUser"
     );
@@ -31,7 +32,7 @@ module.exports = {
     const params = payloadFactory.oliveCreateHmsGetPayload(hms_id);
     return this._hmsRequest(
       "get",
-      "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/state-status",
+      `${constants.hmsBaseUrl}/api/v1/monitoring/v1/profile/state-status`,
       { params, sign: true, contentType: true, label: "MonitoringProfileStateStatus" }
     );
   },
@@ -44,7 +45,7 @@ module.exports = {
     ];
     return this._hmsRequest(
       "patch",
-      "https://hms.api.wyze.com/api/v1/monitoring/v1/profile/active",
+      `${constants.hmsBaseUrl}/api/v1/monitoring/v1/profile/active`,
       { params, body, sign: true, label: "MonitoringProfileActive" }
     );
   },

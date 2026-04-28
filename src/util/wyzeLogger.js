@@ -1,5 +1,7 @@
 "use strict";
 
+const { sanitizeLogMessage } = require("./security");
+
 /**
  * Tiny leveled logger that produces output formatted like a homebridge
  * line so the wyze-api submodule's log statements blend in with whatever
@@ -22,6 +24,12 @@
  *   - prefix  bracket tag at the front of every line (default "Wyze")
  *   - stream  where to write — defaults to process.stdout. Pass
  *             process.stderr or a custom Writable for testing.
+ *   - redact  default true. Set false to bypass sanitizeLogMessage
+ *             when a user needs raw output for their own debugging
+ *             (e.g. capturing a payload to share in a bug report).
+ *             WARNING: bearer tokens, credentials, GPS, emails and
+ *             MACs will be printed verbatim. Don't post the resulting
+ *             log to a public issue tracker.
  */
 const LEVELS = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });
 
@@ -45,10 +53,11 @@ const LEVEL_TAGS = {
 };
 
 class WyzeLogger {
-  constructor({ level = "info", prefix = "Wyze API", stream, color } = {}) {
+  constructor({ level = "info", prefix = "Wyze API", stream, color, redact = true } = {}) {
     this.setLevel(level);
     this.prefix = prefix;
     this.stream = stream || process.stdout;
+    this.redact = redact !== false;
     // Colors on by default — homebridge's log pipeline + most modern
     // terminals handle ANSI escape codes fine, and isTTY is false when
     // running under hb-service so a TTY-only check would strip colors
@@ -80,13 +89,16 @@ class WyzeLogger {
     });
 
     // Stringify each arg the way console.log does for plain strings,
-    // and JSON-dump objects.
-    const message = args.map((a) => {
+    // JSON-dump objects, then run the whole line through the redactor
+    // so bearer tokens / access_token / passwords / etc. never appear
+    // in the log even at debug level.
+    const rawMessage = args.map((a) => {
       if (a == null) return String(a);
       if (typeof a === "string") return a;
       if (a instanceof Error) return a.stack || a.message;
       try { return JSON.stringify(a); } catch { return String(a); }
     }).join(" ");
+    const message = this.redact ? sanitizeLogMessage(rawMessage) : rawMessage;
 
     const tag = LEVEL_TAGS[level];
     const tagText = `[${tag.label}]`;

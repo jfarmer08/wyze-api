@@ -1,5 +1,6 @@
 const axios = require("axios");
 const nodeCrypto = require("crypto");
+const constants = require("../constants");
 
 /**
  * DeviceMgmt API — used by newer cameras (Floodlight Pro / Battery Cam Pro
@@ -43,7 +44,7 @@ module.exports = {
       // OG cam needs a transactionId — server doesn't validate the value.
       transactionId: nodeCrypto.randomBytes(16).toString("hex"),
     };
-    const url = "https://devicemgmt-service-beta.wyze.com/device-management/api/action/run_action";
+    const url = `${constants.devicemgmtBaseUrl}/device-management/api/action/run_action`;
     this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.post(url, payload, {
@@ -76,7 +77,7 @@ module.exports = {
       nonce: String(Date.now()),
     };
     return this._oliveSignedPost(
-      "https://ai-subscription-service-beta.wyzecam.com/v4/subscription-service/toggle-management",
+      `${constants.aiSubscriptionBaseUrl}/v4/subscription-service/toggle-management`,
       payload,
       "DeviceMgmtSetToggle"
     );

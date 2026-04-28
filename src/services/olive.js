@@ -77,7 +77,7 @@ module.exports = {
   async _earthGet(urlPath, params = {}) {
     const withNonce = params.nonce ? params : { ...params, nonce: Date.now().toString() };
     return this._oliveSignedGet(
-      `https://wyze-earth-service.wyzecam.com${urlPath}`,
+      `${constants.earthBaseUrl}${urlPath}`,
       withNonce,
       `Earth GET ${urlPath}`
     );
@@ -85,7 +85,7 @@ module.exports = {
 
   async _earthPost(urlPath, payload) {
     return this._oliveSignedPost(
-      `https://wyze-earth-service.wyzecam.com${urlPath}`,
+      `${constants.earthBaseUrl}${urlPath}`,
       payload,
       `Earth POST ${urlPath}`
     );

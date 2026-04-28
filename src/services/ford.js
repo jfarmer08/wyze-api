@@ -1,5 +1,6 @@
 const axios = require("axios");
 const payloadFactory = require("../utils/payloadFactory");
+const constants = require("../constants");
 
 /**
  * Ford service (yd-saas-toc.wyzecam.com) — V1 locks. Signing happens via
@@ -17,7 +18,7 @@ module.exports = {
       urlPath,
       "get"
     );
-    const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
+    const url = `${constants.fordBaseUrl}${urlPath}`;
     this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.get(url, { params: signedParams });
@@ -45,7 +46,7 @@ module.exports = {
       urlPath,
       method
     );
-    const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
+    const url = `${constants.fordBaseUrl}${urlPath}`;
     this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.request({ url, method, data: signedPayload });

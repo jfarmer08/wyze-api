@@ -24,9 +24,20 @@ module.exports = Object.freeze({
   authApiKey: "WMXHYf79Nr5gIlt3r0r7p9Tcw5bvs6BB4U8O8nGJ",
   userAgent: `unofficial-wyze-api/${packageVersion}`,
 
-  // Base URLs for API requests
+  // Base URLs for API requests. Every outbound request the API makes
+  // should resolve to one of these — util/security.js derives the
+  // hostname allowlist (used by the axios redirect guard) from this
+  // set, so adding a new endpoint here automatically allowlists it.
   authBaseUrl: "https://auth-prod.api.wyze.com",
   apiBaseUrl: "https://api.wyzecam.com",
+  platformBaseUrl: "https://wyze-platform-service.wyzecam.com",
+  siriusBaseUrl: "https://wyze-sirius-service.wyzecam.com",
+  earthBaseUrl: "https://wyze-earth-service.wyzecam.com",
+  fordBaseUrl: "https://yd-saas-toc.wyzecam.com",
+  hmsBaseUrl: "https://hms.api.wyze.com",
+  membershipBaseUrl: "https://wyze-membership-service.wyzecam.com",
+  devicemgmtBaseUrl: "https://devicemgmt-service-beta.wyze.com",
+  aiSubscriptionBaseUrl: "https://ai-subscription-service-beta.wyzecam.com",
   irrigationBaseUrl: "https://wyze-lockwood-service.wyzecam.com/plugin/irrigation/",
 
   // IoT3 API (used by Lock Bolt V2 and Palm lock)
