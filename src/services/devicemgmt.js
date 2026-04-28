@@ -44,14 +44,12 @@ module.exports = {
       transactionId: nodeCrypto.randomBytes(16).toString("hex"),
     };
     const url = "https://devicemgmt-service-beta.wyze.com/device-management/api/action/run_action";
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.post(url, payload, {
         headers: { authorization: this.access_token },
       });
-      if (this.apiLogEnabled) {
-        this.log.info(`API response DeviceMgmt run_action: ${JSON.stringify(result.data)}`);
-      }
+              this.log.debug(`API response DeviceMgmt run_action: ${JSON.stringify(result.data)}`);
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);

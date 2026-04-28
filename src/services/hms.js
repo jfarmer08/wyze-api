@@ -36,7 +36,7 @@ module.exports = {
       config.data = body;
     }
 
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       let result;
       const m = method.toLowerCase();
@@ -46,9 +46,7 @@ module.exports = {
       else if (m === "post") result = await axios.post(url, body, config);
       else throw new Error(`_hmsRequest: unsupported method ${method}`);
 
-      if (this.apiLogEnabled) {
-        this.log.info(`API response ${label || "HMS"}: ${JSON.stringify(result.data)}`);
-      }
+              this.log.debug(`API response ${label || "HMS"}: ${JSON.stringify(result.data)}`);
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);

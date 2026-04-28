@@ -127,9 +127,7 @@ module.exports = {
           propertyValue
         );
       } catch (err) {
-        if (this.apiLogEnabled) {
-          this.log.info(`Local bulb command failed, falling back to cloud: ${err.message}`);
-        }
+                  this.log.debug(`Local bulb command failed, falling back to cloud: ${err.message}`);
       }
     }
     return this.runActionList(

@@ -18,12 +18,10 @@ module.exports = {
       "get"
     );
     const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.get(url, { params: signedParams });
-      if (this.apiLogEnabled) {
-        this.log.info(`API response Ford GET ${urlPath}: ${JSON.stringify(result.data)}`);
-      }
+              this.log.debug(`API response Ford GET ${urlPath}: ${JSON.stringify(result.data)}`);
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);
@@ -48,12 +46,10 @@ module.exports = {
       method
     );
     const url = `https://yd-saas-toc.wyzecam.com${urlPath}`;
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.request({ url, method, data: signedPayload });
-      if (this.apiLogEnabled) {
-        this.log.info(`API response Ford ${method.toUpperCase()} ${urlPath}: ${JSON.stringify(result.data)}`);
-      }
+              this.log.debug(`API response Ford ${method.toUpperCase()} ${urlPath}: ${JSON.stringify(result.data)}`);
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);

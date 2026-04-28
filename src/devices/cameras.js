@@ -87,15 +87,13 @@ module.exports = {
     };
 
     const url = `${constants.iot3BaseUrl}/app/v4/camera/get-streams`;
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       const response = await axios.post(url, body, { headers });
       await this._checkRateLimit(response.headers);
 
       const data = response.data;
-      if (this.apiLogEnabled) {
-        this.log.info(`API response cameraGetStreamInfo: ${JSON.stringify(data)}`);
-      }
+              this.log.debug(`API response cameraGetStreamInfo: ${JSON.stringify(data)}`);
 
       const code = data?.code;
       const errorMessage = data?.msg || data?.description || "";

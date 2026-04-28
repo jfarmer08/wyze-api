@@ -33,14 +33,10 @@ module.exports = {
     const body = JSON.stringify(payload);
     const headers = this._iot3BuildHeaders(body);
     const url = `${constants.iot3BaseUrl}${urlPath}`;
-    if (this.apiLogEnabled) {
-      this.log.info(`Performing request: ${url}`);
-    }
+          this.log.debug(`Performing request: ${url}`);
     try {
       const response = await axios.post(url, body, { headers });
-      if (this.apiLogEnabled) {
-        this.log.info(`API response IoT3 ${urlPath}: ${JSON.stringify(response.data)}`);
-      }
+              this.log.debug(`API response IoT3 ${urlPath}: ${JSON.stringify(response.data)}`);
       return response.data;
     } catch (error) {
       this.log.error(`Request failed: ${error.message}`);

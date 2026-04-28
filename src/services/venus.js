@@ -50,7 +50,7 @@ module.exports = {
           this.access_token
         );
         const headers = this._venusBuildHeaders(nonce, signature);
-        if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+        this.log.debug(`Performing request: ${url}`);
         response = await axios.get(url, { headers, params });
       } else {
         const body = { ...payload, nonce: String(nonce) };
@@ -60,7 +60,7 @@ module.exports = {
           ...this._venusBuildHeaders(nonce, signature),
           "Content-Type": "application/json; charset=utf-8",
         };
-        if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+        this.log.debug(`Performing request: ${url}`);
         response = await axios.request({ url, method: verb, headers, data: bodyStr });
       }
     } catch (e) {
@@ -73,9 +73,7 @@ module.exports = {
       throw e;
     }
 
-    if (this.apiLogEnabled) {
-      this.log.info(`API response Venus ${verb} ${path}: ${JSON.stringify(response.data)}`);
-    }
+          this.log.debug(`API response Venus ${verb} ${path}: ${JSON.stringify(response.data)}`);
     return response.data;
   },
 };

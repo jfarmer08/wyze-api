@@ -23,12 +23,10 @@ module.exports = {
       },
       params,
     };
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.get(url, config);
-      if (this.apiLogEnabled) {
-        this.log.info(`API response ${label || "Olive GET"}: ${JSON.stringify(result.data)}`);
-      }
+              this.log.debug(`API response ${label || "Olive GET"}: ${JSON.stringify(result.data)}`);
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);
@@ -57,12 +55,10 @@ module.exports = {
         signature2: signature,
       },
     };
-    if (this.apiLogEnabled) this.log.info(`Performing request: ${url}`);
+    this.log.debug(`Performing request: ${url}`);
     try {
       const result = await axios.post(url, bodyStr, config);
-      if (this.apiLogEnabled) {
-        this.log.info(`API response ${label || "Olive POST"}: ${JSON.stringify(result.data)}`);
-      }
+              this.log.debug(`API response ${label || "Olive POST"}: ${JSON.stringify(result.data)}`);
       return result.data;
     } catch (e) {
       this.log.error(`Request failed: ${e.message}`);

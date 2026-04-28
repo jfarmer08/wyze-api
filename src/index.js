@@ -19,18 +19,69 @@ installRedirectGuard();
 
 const { propertyIds: PIDs } = types;
 
+// Standard syslog-style level ordering. Lower number = more severe; a
+// configured threshold suppresses anything more verbose (higher number).
+const LOG_LEVELS = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });
+
+/**
+ * Resolve the underlying sink function for a given level. Handles the
+ * homebridge log object (which is also a callable function), the
+ * @ptkdev/logger instance (which uses .warning instead of .warn), and a
+ * console fallback so the wrapper stays functional even with weird
+ * inputs.
+ */
+function _resolveSink(log, level) {
+  if (!log) return (...a) => console[level === "debug" ? "log" : level](...a); // eslint-disable-line no-console
+  if (typeof log[level] === "function") return (...a) => log[level](...a);
+  if (level === "warn" && typeof log.warning === "function") return (...a) => log.warning(...a);
+  if (level === "warning" && typeof log.warn === "function") return (...a) => log.warn(...a);
+  if (typeof log === "function") return (...a) => log(...a);
+  return (...a) => console[level === "debug" ? "log" : level](...a); // eslint-disable-line no-console
+}
+
+/**
+ * Wrap an underlying logger (homebridge log, @ptkdev/logger, or null)
+ * so calls below the configured threshold become no-ops and skip
+ * string formatting entirely.
+ *
+ * Provides .error / .warn / .info / .debug, plus .warning as an alias
+ * for back-compat with callers that used the @ptkdev naming.
+ *
+ * @param {Function|Object|null} log     underlying sink
+ * @param {string} logLevel              "error" | "warn" | "info" | "debug"
+ */
+function buildLeveledLogger(log, logLevel) {
+  const min = LOG_LEVELS[logLevel] ?? LOG_LEVELS.info;
+  const out = {};
+  for (const [level, weight] of Object.entries(LOG_LEVELS)) {
+    out[level] = weight <= min ? _resolveSink(log, level) : () => {};
+  }
+  out.warning = out.warn;
+  return out;
+}
+
 module.exports = class WyzeAPI {
-  constructor(options, log) {
-    if (log) {
-      this.log = {
-        info: (...a) => log(...a),
-        warning: (...a) => log.warn(...a),
-        error: (...a) => log.error(...a),
-      };
-    } else {
-      const Logger = require("@ptkdev/logger");
-      this.log = new Logger();
+  // The optional second arg is ignored — kept only so existing callers
+  // that pass a homebridge log don't break. The API uses its own
+  // @ptkdev/logger so its output is colorized in the terminal,
+  // independently of whatever the homebridge plugin layer does with
+  // its own log object.
+  constructor(options /*, log [unused] */) {
+    // Resolve effective log level. apiLogEnabled is the legacy option —
+    // honored for back-compat: true → debug, false/unset → info.
+    const requestedLevel = options.logLevel
+      ? String(options.logLevel).toLowerCase()
+      : (options.apiLogEnabled ? "debug" : "info");
+    this.logLevel = LOG_LEVELS[requestedLevel] != null ? requestedLevel : "info";
+
+    const Logger = require("@ptkdev/logger");
+    const ptk = new Logger();
+    // ptkdev's "warn" is named .warning; alias so our wrapper's level
+    // routing works whether callers use .warn or .warning.
+    if (!ptk.warn && typeof ptk.warning === "function") {
+      ptk.warn = ptk.warning.bind(ptk);
     }
+    this.log = buildLeveledLogger(ptk, this.logLevel);
     this.persistPath = options.persistPath;
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false;
     this.lowBatteryPercentage = options.lowBatteryPercentage || 30;
@@ -41,8 +92,10 @@ module.exports = class WyzeAPI {
     this.apiKey = options.apiKey;
     this.keyId = options.keyId;
 
-    // Logging
-    this.apiLogEnabled = options.apiLogEnabled;
+    // Legacy "log everything" toggle. Kept on the instance because some
+    // device modules still gate dumps with `if (this.apiLogEnabled)`.
+    // The new logLevel === "debug" check below is preferred.
+    this.apiLogEnabled = options.apiLogEnabled || this.logLevel === "debug";
 
     // URLs
     this.authBaseUrl = options.authBaseUrl || constants.authBaseUrl;
@@ -181,10 +234,10 @@ module.exports = class WyzeAPI {
       ...config,
     };
 
-    // Log the request if API logging is enabled
-    if (this.apiLogEnabled) {
-      this.log.info(`Performing request: ${JSON.stringify(config)}`);
-    }
+    // Log every outgoing request at debug level — full config dump is
+    // verbose and only useful when actively debugging. Suppressed unless
+    // logLevel is "debug" (or legacy apiLogEnabled is true).
+    this.log.debug(`Performing request: ${JSON.stringify(config)}`);
 
     let result;
     try {
@@ -225,6 +278,8 @@ module.exports = class WyzeAPI {
   }
 
   _logApiResponse(result, url) {
+    // One-shot dump triggered by setting this.dumpData=true elsewhere —
+    // keep at info level since it's an explicit user request.
     if (this.dumpData) {
       this.dumpData = false;
       this.log.info(
@@ -233,16 +288,17 @@ module.exports = class WyzeAPI {
           (key, val) => (key.includes("token") ? "*******" : val)
         )}`
       );
-    } else if (this.apiLogEnabled) {
-      this.log.info(
-        `API response PerformRequest: ${JSON.stringify({
-          url,
-          status: result.status,
-          data: result.data,
-          headers: result.headers,
-        })}`
-      );
+      return;
     }
+    // Routine response dumps — debug-level only.
+    this.log.debug(
+      `API response PerformRequest: ${JSON.stringify({
+        url,
+        status: result.status,
+        data: result.data,
+        headers: result.headers,
+      })}`
+    );
   }
 
   async _checkRateLimit(headers) {
@@ -256,13 +312,15 @@ module.exports = class WyzeAPI {
         : undefined;
 
       if (rateLimitRemaining !== undefined && rateLimitRemaining < 7) {
+        // Critical — about to throttle. Always surface as warn.
         const resetsIn = rateLimitResetBy - Date.now();
-        this.log.info(
-          `API rate limit remaining: ${rateLimitRemaining} - resets in ${resetsIn}ms`
+        this.log.warn(
+          `API rate limit remaining: ${rateLimitRemaining} — sleeping until reset in ${resetsIn}ms`
         );
         await this.sleepMilliSecounds(resetsIn);
-      } else if (rateLimitRemaining && this.apiLogEnabled) {
-        this.log.info(
+      } else if (rateLimitRemaining !== undefined) {
+        // Routine remaining-count — debug only so it doesn't spam.
+        this.log.debug(
           `API rate limit remaining: ${rateLimitRemaining}. Expires in ${rateLimitResetBy - Date.now()}ms`
         );
       }
@@ -413,9 +471,9 @@ module.exports = class WyzeAPI {
           )}`
         );
       }
-      if (this.apiLogEnabled) {
-        this.log.info("Successfully logged into Wyze API");
-      }
+      // Login is a noteworthy lifecycle event — surface at info so users
+      // can see "yes, the plugin is talking to Wyze" without enabling debug.
+      this.log.info("Successfully logged into Wyze API");
       await this._updateTokens(result.data);
     }
   }
@@ -460,11 +518,9 @@ module.exports = class WyzeAPI {
   * @param {number} now - The current time in milliseconds.
   */
   logDebounceInfo(now) {
-    if (this.apiLogEnabled) {
-      this.log.info(
+          this.log.debug(
         `Last login: ${this.lastLoginAttempt}, Debounce: ${this.loginAttemptDebounceMilliseconds} ms, Now: ${now}`
       );
-    }
   }
 
   /**
@@ -621,9 +677,7 @@ module.exports = class WyzeAPI {
 
     while (attempt < maxRetries) {
       try {
-        if (this.apiLogEnabled) {
-          this.log.info(`Persisting tokens @ ${tokenPath}`);
-        }
+                  this.log.debug(`Persisting tokens @ ${tokenPath}`);
         await fs.writeFile(tokenPath, JSON.stringify(data)); // Write tokens to the file.
         return; // Exit if successful.
       } catch (error) {
@@ -766,8 +820,7 @@ module.exports = class WyzeAPI {
       custom_string: "",
     };
 
-    if (this.apiLogEnabled)
-      this.log.info(`run_action Data Body: ${JSON.stringify(data)}`);
+    this.log.debug(`run_action Data Body: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action", data);
     return result.data;
@@ -796,9 +849,7 @@ module.exports = class WyzeAPI {
       ]
     };
 
-    if (this.apiLogEnabled) {
-      this.log.info(`runActionList Request Data: ${JSON.stringify(data)}`);
-    }
+          this.log.debug(`runActionList Request Data: ${JSON.stringify(data)}`);
 
     const result = await this.request("app/v2/auto/run_action_list", data);
     return result.data;
@@ -832,9 +883,7 @@ module.exports = class WyzeAPI {
         },
       ],
     };
-    if (this.apiLogEnabled) {
-      this.log.info(`runActionListMulti Request Data: ${JSON.stringify(data)}`);
-    }
+          this.log.debug(`runActionListMulti Request Data: ${JSON.stringify(data)}`);
     const result = await this.request("app/v2/auto/run_action_list", data);
     return result.data;
   }
@@ -898,15 +947,13 @@ module.exports = class WyzeAPI {
     }).replace(/\\\\/g, "\\");
 
     const url = `http://${deviceIp}:88/device_request`;
-    if (this.apiLogEnabled) this.log.info(`localBulbCommand: ${url}`);
+    this.log.debug(`localBulbCommand: ${url}`);
 
     const response = await axios.post(url, payloadStr, {
       headers: { "Content-Type": "application/json" },
     });
 
-    if (this.apiLogEnabled) {
-      this.log.info(`localBulbCommand response from ${deviceMac}: ${JSON.stringify(response.data)}`);
-    }
+          this.log.debug(`localBulbCommand response from ${deviceMac}: ${JSON.stringify(response.data)}`);
     return response.data;
   }
 
