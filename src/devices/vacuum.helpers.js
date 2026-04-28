@@ -29,6 +29,39 @@ module.exports = {
     return vacuums.find((v) => v.mac === mac);
   },
 
+  /**
+   * Returns the room list for the vacuum's currently-active map as a
+   * flat array of `{ id, name, mapId, mapName }`. Multi-floor users can
+   * have several stored maps; this returns just the rooms for whichever
+   * map the vacuum has loaded right now (the one with current_map === true).
+   *
+   * Returns [] (not null) when the vacuum has no rooms — fresh setup,
+   * map deleted in the app, or response shape we don't recognize. Lets
+   * callers iterate without null-checks.
+   */
+  async getVacuumRooms(mac) {
+    const response = await this.getVacuumMaps(mac);
+    // Wyze nests the actual list a couple of layers down and the shape
+    // has shifted across firmwares — accept either {data: {data: [...]}}
+    // or {data: [...]} so we don't fall over the next time they tweak.
+    const maps =
+      (Array.isArray(response?.data?.data) && response.data.data) ||
+      (Array.isArray(response?.data) && response.data) ||
+      [];
+    if (maps.length === 0) return [];
+
+    const current = maps.find((m) => m?.current_map === true) || maps[0];
+    const rooms = Array.isArray(current?.room_info_list) ? current.room_info_list : [];
+    return rooms
+      .filter((r) => r && (r.room_id != null || r.id != null))
+      .map((r) => ({
+        id: r.room_id ?? r.id,
+        name: String(r.room_name ?? r.name ?? `Room ${r.room_id ?? r.id}`),
+        mapId: current.map_id,
+        mapName: current.user_map_name || null,
+      }));
+  },
+
   async vacuumClean(mac) {
     return this.vacuumControl(mac, VacuumControlType.GLOBAL_SWEEPING, VacuumControlValue.START);
   },
