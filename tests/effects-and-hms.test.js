@@ -13,7 +13,7 @@ const stub = () => {
   w.appInfo = "test";
   w.phoneId = "test";
   w.apiLogEnabled = false;
-  w.log = { info: () => {}, error: () => {}, warning: () => {} };
+  w.log = { info: () => {}, error: () => {}, warn: () => {}, warning: () => {}, debug: () => {} };
   w.maybeLogin = async () => {};
   return w;
 };

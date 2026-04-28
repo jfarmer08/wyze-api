@@ -40,11 +40,11 @@ module.exports = {
   },
 
   /**
-   * Combined snapshot — list entry + iot props + device info + status.
-   * Position and map are omitted by default (huge payloads, not needed for
-   * HomeKit status updates). Pass { includeMap: true } to fetch them.
+   * Combined snapshot — list entry + iot props + device info + status +
+   * current position + current map. Each sub-fetch is wrapped in safe()
+   * so a single failing endpoint doesn't lose the rest of the data.
    */
-  async getVacuumInfo(mac, { includeMap = false } = {}) {
+  async getVacuumInfo(mac) {
     const vacuum = await this.getVacuum(mac);
     if (!vacuum) return null;
 
@@ -72,15 +72,13 @@ module.exports = {
     if (status?.data?.eventFlag) Object.assign(result, status.data.eventFlag);
     if (status?.data?.heartBeat) Object.assign(result, status.data.heartBeat);
 
-    if (includeMap) {
-      const position = await safe("current_position", () =>
-        this.getVacuumCurrentPosition(mac)
-      );
-      if (position?.data) result.current_position = position.data;
+    const position = await safe("current_position", () =>
+      this.getVacuumCurrentPosition(mac)
+    );
+    if (position?.data) result.current_position = position.data;
 
-      const map = await safe("current_map", () => this.getVacuumCurrentMap(mac));
-      if (map?.data) result.current_map = map.data;
-    }
+    const map = await safe("current_map", () => this.getVacuumCurrentMap(mac));
+    if (map?.data) result.current_map = map.data;
 
     return result;
   },
