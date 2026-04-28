@@ -19,53 +19,14 @@ installRedirectGuard();
 
 const { propertyIds: PIDs } = types;
 
-// Standard syslog-style level ordering. Lower number = more severe; a
-// configured threshold suppresses anything more verbose (higher number).
-const LOG_LEVELS = Object.freeze({ error: 0, warn: 1, info: 2, debug: 3 });
-
-/**
- * Resolve the underlying sink function for a given level. Handles the
- * homebridge log object (which is also a callable function), the
- * @ptkdev/logger instance (which uses .warning instead of .warn), and a
- * console fallback so the wrapper stays functional even with weird
- * inputs.
- */
-function _resolveSink(log, level) {
-  if (!log) return (...a) => console[level === "debug" ? "log" : level](...a); // eslint-disable-line no-console
-  if (typeof log[level] === "function") return (...a) => log[level](...a);
-  if (level === "warn" && typeof log.warning === "function") return (...a) => log.warning(...a);
-  if (level === "warning" && typeof log.warn === "function") return (...a) => log.warn(...a);
-  if (typeof log === "function") return (...a) => log(...a);
-  return (...a) => console[level === "debug" ? "log" : level](...a); // eslint-disable-line no-console
-}
-
-/**
- * Wrap an underlying logger (homebridge log, @ptkdev/logger, or null)
- * so calls below the configured threshold become no-ops and skip
- * string formatting entirely.
- *
- * Provides .error / .warn / .info / .debug, plus .warning as an alias
- * for back-compat with callers that used the @ptkdev naming.
- *
- * @param {Function|Object|null} log     underlying sink
- * @param {string} logLevel              "error" | "warn" | "info" | "debug"
- */
-function buildLeveledLogger(log, logLevel) {
-  const min = LOG_LEVELS[logLevel] ?? LOG_LEVELS.info;
-  const out = {};
-  for (const [level, weight] of Object.entries(LOG_LEVELS)) {
-    out[level] = weight <= min ? _resolveSink(log, level) : () => {};
-  }
-  out.warning = out.warn;
-  return out;
-}
+const { WyzeLogger, LEVELS: LOG_LEVELS } = require("./util/wyzeLogger");
 
 module.exports = class WyzeAPI {
   // The optional second arg is ignored — kept only so existing callers
   // that pass a homebridge log don't break. The API uses its own
-  // @ptkdev/logger so its output is colorized in the terminal,
-  // independently of whatever the homebridge plugin layer does with
-  // its own log object.
+  // WyzeLogger so its output is formatted to look like a homebridge log
+  // line and color-codes the level tag, independently of whatever the
+  // homebridge plugin layer does with its own log object.
   constructor(options /*, log [unused] */) {
     // Resolve effective log level. apiLogEnabled is the legacy option —
     // honored for back-compat: true → debug, false/unset → info.
@@ -74,14 +35,7 @@ module.exports = class WyzeAPI {
       : (options.apiLogEnabled ? "debug" : "info");
     this.logLevel = LOG_LEVELS[requestedLevel] != null ? requestedLevel : "info";
 
-    const Logger = require("@ptkdev/logger");
-    const ptk = new Logger();
-    // ptkdev's "warn" is named .warning; alias so our wrapper's level
-    // routing works whether callers use .warn or .warning.
-    if (!ptk.warn && typeof ptk.warning === "function") {
-      ptk.warn = ptk.warning.bind(ptk);
-    }
-    this.log = buildLeveledLogger(ptk, this.logLevel);
+    this.log = new WyzeLogger({ level: this.logLevel, prefix: options.logPrefix || "Wyze" });
     this.persistPath = options.persistPath;
     this.refreshTokenTimerEnabled = options.refreshTokenTimerEnabled || false;
     this.lowBatteryPercentage = options.lowBatteryPercentage || 30;

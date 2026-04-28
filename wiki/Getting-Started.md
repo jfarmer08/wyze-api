@@ -39,7 +39,9 @@ const wyze = new Wyze({
 | `apiKey` | — | Developer api key |
 | `mfaCode` | — | TOTP code if your account has MFA enforced |
 | `persistPath` | — | Directory for cached auth tokens. **Recommended** — without this, every process restart triggers a fresh login. |
-| `apiLogEnabled` | `false` | Log every request/response to the bundled `@ptkdev/logger`. Useful for development; noisy in prod. |
+| `logLevel` | `"info"` | Verbosity for the built-in `WyzeLogger`. One of `"error"` / `"warn"` / `"info"` / `"debug"`. Set to `"debug"` to log every request/response (replaces the legacy `apiLogEnabled` toggle). |
+| `apiLogEnabled` | `false` | Legacy boolean — `true` is now mapped to `logLevel: "debug"` for back-compat. |
+| `logPrefix` | `"Wyze"` | Bracket tag at the front of every log line so output blends in with the host application's logs. |
 | `refreshTokenTimerEnabled` | `false` | When `true`, runs `refreshToken()` every 48h on a `setInterval`. |
 | `lowBatteryPercentage` | `30` | Threshold used by the `checkLowBattery(value)` helper. |
 | `authBaseUrl` | `https://auth-prod.api.wyze.com` | Override only for testing. |
