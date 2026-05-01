@@ -11,7 +11,7 @@ const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
 const RokuAuthLib = require("./rokuAuth")
-const cameraStreamCapture = require("./cameraStreamCapture");
+let cameraStreamCapture;
 const types = require("./types");
 
 const {
@@ -1514,7 +1514,7 @@ module.exports = class WyzeAPI {
     const characteristics = {
       mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
       index: '1', // Fixed index value
-      ts: moment().valueOf(), // Current timestamp in milliseconds
+      ts: Date.now(),
       plist: plist // Property list with the ID and value
     };
 
@@ -2632,6 +2632,7 @@ module.exports = class WyzeAPI {
       includeClientId: false,
     });
 
+    if (!cameraStreamCapture) cameraStreamCapture = require("./cameraStreamCapture");
     const buffer = await cameraStreamCapture.captureStreamFrame({
       signalingUrl: conn.signalingUrl,
       iceServers: conn.iceServers,
