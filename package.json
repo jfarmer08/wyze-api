@@ -1,6 +1,6 @@
 {
   "name": "wyze-api",
-  "version": "1.1.11",
+  "version": "1.1.12",
   "description": "An unoficial API wrapper for Wyze products.",
   "homepage": "https://github.com/jfarmer08/wyze-api",
   "main": "./src/index.js",
@@ -28,7 +28,6 @@
     "colorsys": "^1.0.22",
     "crypto-js": "4.2.0",
     "ffmpeg-static": "^5.3.0",
-    "moment": "2.29.4",
     "querystring": "0.2.1",
     "urllib": "3.18.0",
     "utf8": "3.0.0",

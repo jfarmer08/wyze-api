@@ -11,7 +11,6 @@ const crypto = require("./crypto");
 const constants = require("./constants");
 const util = require("./util");
 const RokuAuthLib = require("./rokuAuth")
-const cameraStreamCapture = require("./cameraStreamCapture");
 const types = require("./types");
 
 const {
@@ -1514,7 +1513,7 @@ module.exports = class WyzeAPI {
     const characteristics = {
       mac: deviceMac.toUpperCase(), // Convert MAC address to uppercase
       index: '1', // Fixed index value
-      ts: moment().valueOf(), // Current timestamp in milliseconds
+      ts: Date.now(), // Current timestamp in milliseconds
       plist: plist // Property list with the ID and value
     };
 
@@ -1556,7 +1555,7 @@ module.exports = class WyzeAPI {
 
         // Handle fallback to cloud
         console.log(`Attempting to fallback to cloud for device ${deviceMac}.`);
-        await runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey);
+        await this.runActionList(deviceMac, deviceModel, propertyId, propertyValue, actionKey);
       } else {
         // Log other types of errors
         console.error(`Error occurred while sending command to device ${deviceMac}:`, error);
@@ -1568,7 +1567,7 @@ module.exports = class WyzeAPI {
     const rokuAuth = new RokuAuthLib(this.username, this.password);
     const token = await rokuAuth.getTokenWithUsernamePassword(this.username, this.password);
 
-    print(token)
+    this.log.info(token);
   }
 
   // Wyze Robot Vacuum (Venus service) — JA_RO2.
@@ -2632,6 +2631,7 @@ module.exports = class WyzeAPI {
       includeClientId: false,
     });
 
+    const cameraStreamCapture = require("./cameraStreamCapture");
     const buffer = await cameraStreamCapture.captureStreamFrame({
       signalingUrl: conn.signalingUrl,
       iceServers: conn.iceServers,
