@@ -2,13 +2,21 @@ const constants = require("./constants");
 const crypto = require("./crypto");
 
 function fordCreatePayload(access_token, payload, url_path, request_method) {
-  return {
+  // GET uses access_token (snake_case); POST uses accessToken (camelCase).
+  // Sending the wrong field name returns PARAM_SIGN_INVALID even when the
+  // signature is otherwise correct (verified against shauntarves/wyze-sdk).
+  const method = String(request_method).toLowerCase();
+  const tokenField = method === "get" ? "access_token" : "accessToken";
+  const augmented = {
     ...payload,
-    accessToken: access_token,
+    [tokenField]: access_token,
     key: constants.fordAppKey,
     timestamp: Date.now().toString(),
-    sign: crypto.fordCreateSignature(url_path, request_method, payload),
   };
+  // Signature must be computed over the augmented payload (all fields
+  // including token/key/timestamp), not the original payload alone.
+  augmented.sign = crypto.fordCreateSignature(url_path, method, augmented);
+  return augmented;
 }
 
 function oliveCreateGetPayload(device_mac, keys) {
