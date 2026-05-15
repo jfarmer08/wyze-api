@@ -781,9 +781,6 @@ module.exports = class WyzeAPI {
       with_keypad: "1",
     };
     try {
-      let config = {
-        params: payload,
-      };
       payload = payloadFactory.fordCreatePayload(
         this.access_token,
         payload,
@@ -791,6 +788,7 @@ module.exports = class WyzeAPI {
         "get"
       );
 
+      const config = { params: payload };
       const url = "https://yd-saas-toc.wyzecam.com/openapi/lock/v1/info";
       const result = await axios.get(url, config);
       if (this.apiLogEnabled) {
