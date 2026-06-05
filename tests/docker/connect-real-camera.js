@@ -131,7 +131,7 @@ async function main() {
   section("Tutk session — connect → send K10090 → close");
 
   const { TutkSession, TutkSessionError } = require("../../src/tutk/session");
-  const M = require("../../example/tutk-spike/lib/messages");
+  const M = require("../../src/tutk/lib/messages");
 
   // Generate stable phoneId from the host (Tutk wants something
   // consistent so the camera can rate-limit per client; doesn't need

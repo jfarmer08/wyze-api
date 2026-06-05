@@ -43,9 +43,9 @@
 const path = require("path");
 
 const { loadTutk, isTutkSupported, defaultSoPath, TutkLoaderError } = require("./loader");
-const codec = require("../../example/tutk-spike/lib/codec");
-const auth = require("../../example/tutk-spike/lib/auth");
-const M = require("../../example/tutk-spike/lib/messages");
+const codec = require("./lib/codec");
+const auth = require("./lib/auth");
+const M = require("./lib/messages");
 
 // ---- SDK ref-counted lifetime ------------------------------------------
 //

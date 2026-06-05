@@ -55,7 +55,7 @@ camera sessions:
 
 ```js
 const { TutkSession } = require('wyze-api/src/tutk/session');
-const M = require('wyze-api/example/tutk-spike/lib/messages');
+const M = require('wyze-api/src/tutk/lib/messages');
 
 const sess = new TutkSession({
   uid: 'AABBCCDDEEFF',

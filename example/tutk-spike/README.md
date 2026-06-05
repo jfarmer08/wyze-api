@@ -5,33 +5,40 @@ control-plane commands used by every non-Gwell Wyze camera (V2, V3,
 V4, Pan v1/v2/v3, Outdoor / Outdoor 2, original Doorbell, OG, Battery
 Cam Pro, Robot Vacuum) when talking over Throughtek's IOTC channel.
 
-**Status:** Phase 0 — protocol primitives only, no `.so` loading, no
-networking against real devices yet. Validated against the reference
+**Status:** Phase 0 protocol primitives, validated against the reference
 Python implementation in
 [docker-wyze-bridge](https://github.com/mrlt8/docker-wyze-bridge).
+
+The protocol modules originally lived here under `lib/`. They have been
+promoted into the package's main source tree at
+[`src/tutk/lib/`](../../src/tutk/lib/) and are used by `src/tutk/session.js`.
+This directory now keeps only the demo (`spike.js`) and fixture tests as
+runnable documentation of the protocol layer in isolation.
 
 ## What's in this directory
 
 ```
 tutk-spike/
-├── lib/
-│   ├── constants.js       Protocol version 5, prefix "HL", FRAME_SIZE, BITRATE
-│   ├── header.js          16-byte TutkWyzeProtocolHeader pack/unpack
-│   ├── codec.js           encode(code, data) + decode(buf) top-level helpers
-│   ├── messages.js        All 63 K-classes (K10000 … K12060)
-│   ├── xxtea.js           XXTEA cipher (used in auth challenge-response)
-│   └── auth.js            generateChallengeResponse + buildAuthResponse
+├── spike.js               End-to-end protocol round-trip + perf bench
 ├── test/
 │   └── fixtures.test.js   Pinned vectors vs Python reference
-├── spike.js               End-to-end protocol round-trip + perf bench
 └── README.md              you are here
 ```
+
+The actual modules (imported above) live in `src/tutk/lib/`:
+
+- `constants.js`  Protocol version 5, prefix "HL", FRAME_SIZE, BITRATE
+- `header.js`     16-byte TutkWyzeProtocolHeader pack/unpack
+- `codec.js`      encode(code, data) + decode(buf) top-level helpers
+- `messages.js`   All 63 K-classes (K10000 … K12060)
+- `xxtea.js`      XXTEA cipher (used in auth challenge-response)
+- `auth.js`       generateChallengeResponse + buildAuthResponse
 
 ## Running
 
 ```bash
-# Individual self-tests (each module):
-node lib/xxtea.js
+# Individual self-tests (each module, run from src/tutk/lib/):
+node ../../src/tutk/lib/xxtea.js
 
 # Top-level spike — round-trips everything:
 node spike.js
@@ -109,11 +116,11 @@ delivery plumbing.
 Every implementation in this directory is a port of code in
 [docker-wyze-bridge](https://github.com/mrlt8/docker-wyze-bridge):
 
-- `lib/header.js` ← `app/wyzecam/tutk/tutk_protocol.py` (TutkWyzeProtocolHeader)
-- `lib/codec.js`  ← `app/wyzecam/tutk/tutk_protocol.py` (encode/decode)
-- `lib/messages.js` ← `app/wyzecam/tutk/tutk_protocol.py` (all K-classes)
-- `lib/xxtea.js` ← XXTEA spec; verified against `xxtea` PyPI package
-- `lib/auth.js` ← `app/wyzecam/tutk/tutk_protocol.py`
+- `src/tutk/lib/header.js` ← `app/wyzecam/tutk/tutk_protocol.py` (TutkWyzeProtocolHeader)
+- `src/tutk/lib/codec.js`  ← `app/wyzecam/tutk/tutk_protocol.py` (encode/decode)
+- `src/tutk/lib/messages.js` ← `app/wyzecam/tutk/tutk_protocol.py` (all K-classes)
+- `src/tutk/lib/xxtea.js` ← XXTEA spec; verified against `xxtea` PyPI package
+- `src/tutk/lib/auth.js` ← `app/wyzecam/tutk/tutk_protocol.py`
   (respond_to_ioctrl_10001, generate_challenge_response)
 
 Constants and bitrate enums come from `app/wyzecam/tutk/tutk.py`.

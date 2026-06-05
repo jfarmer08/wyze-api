@@ -30,10 +30,10 @@
  *   "
  */
 
-const { encode, decode } = require("../lib/codec");
-const xxtea = require("../lib/xxtea");
-const auth = require("../lib/auth");
-const M = require("../lib/messages");
+const { encode, decode } = require("../../../src/tutk/lib/codec");
+const xxtea = require("../../../src/tutk/lib/xxtea");
+const auth = require("../../../src/tutk/lib/auth");
+const M = require("../../../src/tutk/lib/messages");
 
 let failures = 0;
 const fail = (m) => { console.log(`  ✗ ${m}`); failures++; };

@@ -15,12 +15,12 @@
  * Exit: 0 on success, 1 on failure.
  */
 
-const { encode, decode } = require("./lib/codec");
-const { unpackHeader, TutkWyzeProtocolError } = require("./lib/header");
-const { PREFIX, PROTOCOL_VERSION, HEADER_SIZE, BITRATE, FRAME_SIZE } = require("./lib/constants");
-const xxtea = require("./lib/xxtea");
-const auth = require("./lib/auth");
-const M = require("./lib/messages");
+const { encode, decode } = require("../../src/tutk/lib/codec");
+const { unpackHeader, TutkWyzeProtocolError } = require("../../src/tutk/lib/header");
+const { PREFIX, PROTOCOL_VERSION, HEADER_SIZE, BITRATE, FRAME_SIZE } = require("../../src/tutk/lib/constants");
+const xxtea = require("../../src/tutk/lib/xxtea");
+const auth = require("../../src/tutk/lib/auth");
+const M = require("../../src/tutk/lib/messages");
 
 let failures = 0;
 function check(label, cond, detail) {

@@ -19,10 +19,10 @@ const path = require("node:path");
 const sessionMod = require("../src/tutk/session");
 const { TutkSession, TutkSessionError, SessionClosedError } = sessionMod;
 
-const codec = require("../example/tutk-spike/lib/codec");
-const M = require("../example/tutk-spike/lib/messages");
-const auth = require("../example/tutk-spike/lib/auth");
-const xxtea = require("../example/tutk-spike/lib/xxtea");
+const codec = require("../src/tutk/lib/codec");
+const M = require("../src/tutk/lib/messages");
+const auth = require("../src/tutk/lib/auth");
+const xxtea = require("../src/tutk/lib/xxtea");
 
 // ---- A stub SDK that simulates a camera --------------------------------
 //
