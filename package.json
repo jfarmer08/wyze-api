@@ -9,7 +9,9 @@
   },
   "scripts": {
     "test": "node --test --test-reporter=spec tests/*.test.js",
-    "fetch-wyze-sdk": "node scripts/fetch-wyze-sdk.js"
+    "fetch-wyze-sdk": "node scripts/fetch-wyze-sdk.js",
+    "tutk-smoke": "tests/docker/run-tutk-smoke.sh",
+    "tutk-smoke-real": "tests/docker/run-real-camera-smoke.sh"
   },
   "keywords": [
     "wyze",

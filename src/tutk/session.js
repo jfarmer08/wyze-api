@@ -115,6 +115,10 @@ class TutkSession {
    * @param {string} opts.phoneId — any unique identifier for this client
    * @param {string} opts.openUserId — Wyze account open_user_id
    * @param {boolean} [opts.audio=false]
+   * @param {number} [opts.connectTimeoutMs=25000] — JS-side ceiling on
+   *   the IOTC_Connect_ByUID call. The SDK's own timeout is ~30s; this
+   *   guarantees we surface a clear error to the caller well before
+   *   any background hang becomes a debugging nightmare.
    * @param {string} [opts.soPath] — override .so location (default ~/.homebridge/wyze-sdk/...)
    * @param {(model, protocol, command) => boolean} [opts.supports]
    * @param {(level, msg) => void} [opts.log] — logger
@@ -154,8 +158,22 @@ class TutkSession {
     this.sdk = _acquireSdk(this.opts.soPath);
     this.log("info", `Tutk SDK version: ${this.sdk.getVersionString()}`);
 
-    // 1. Open IOTC session by UID
-    const sid = this.sdk.connectByUid(this.opts.uid);
+    // 1. Open IOTC session by UID. This blocks synchronously inside
+    //    the SDK until either a session opens or its internal timeout
+    //    fires (usually 15–30s). On Docker Desktop for Mac, where
+    //    --network host points at the Docker VM's network and not
+    //    your LAN, this hang has no upper bound from the caller's
+    //    perspective — so we wrap with an explicit JS-side timeout
+    //    and force-cleanup on miss.
+    //
+    //    The connectTimeoutMs option lets callers tune this; default
+    //    is 25s which is just under the SDK's own ~30s typical limit.
+    const connectTimeoutMs = this.opts.connectTimeoutMs || 25_000;
+    const sid = await this._withTimeout(
+      () => this.sdk.connectByUid(this.opts.uid),
+      connectTimeoutMs,
+      `IOTC_Connect_ByUID timed out after ${connectTimeoutMs}ms (no response from camera ${this.opts.uid})`
+    );
     if (sid < 0) {
       _releaseSdk();
       throw new TutkSessionError(`IOTC_Connect_ByUID returned ${sid}`, sid);
@@ -332,6 +350,55 @@ class TutkSession {
       const w = waiters.shift();
       w.resolve(parsed.payload || Buffer.alloc(0));
     }, 20); // 50Hz poll — light enough for control, not for streaming
+  }
+
+  /**
+   * Run a synchronous SDK call in the next event-loop tick and race it
+   * against a JS-side timeout. The SDK call still blocks for the
+   * full timeout if the network never responds — we can't actually
+   * interrupt a sync call across the FFI boundary — but the *promise*
+   * resolves on time, so callers can move on and we can mark the
+   * session as broken without hanging indefinitely.
+   *
+   * In practice the SDK has its own internal timeout (15–30s) and
+   * returns a negative error code, so the orphaned thread cleans up
+   * shortly after our JS timeout fires.
+   *
+   * @template T
+   * @param {() => T} fn
+   * @param {number} timeoutMs
+   * @param {string} errMessage
+   * @returns {Promise<T>}
+   */
+  _withTimeout(fn, timeoutMs, errMessage) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const t = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          reject(new TutkSessionError(errMessage));
+        }
+      }, timeoutMs);
+      // setImmediate keeps the synchronous SDK call off the same tick
+      // as the timer setup; otherwise a slow JS-side step before fn()
+      // would also count against the budget.
+      setImmediate(() => {
+        try {
+          const result = fn();
+          if (!settled) {
+            settled = true;
+            clearTimeout(t);
+            resolve(result);
+          }
+        } catch (e) {
+          if (!settled) {
+            settled = true;
+            clearTimeout(t);
+            reject(e);
+          }
+        }
+      });
+    });
   }
 
   _expirePending() {

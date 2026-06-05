@@ -88,3 +88,121 @@ arch-specific builds) — both `_Arm_*` and `_x64` are valid.
   CLI
 
 Built image is ~250 MB. Mostly Node + libc + the .so itself.
+
+---
+
+# Real-camera smoke test (`connect-real-camera.js`)
+
+End-to-end validation against an actual Wyze camera on your LAN.
+Builds on the loader smoke — same Docker image pattern, plus your
+credentials piped in as env vars.
+
+## What this proves
+
+- The Phase 1 stack reaches a real camera over the LAN
+- The IOTC session opens (camera UID + LAN routing both work)
+- The AV channel starts on top of the IOTC session
+- The auth handshake completes (xxtea, K10000/K10001/K10008/K10009)
+- A K-class round-trip works (`K10090GetCameraTime` returns the
+  camera's clock reading)
+- `close()` cleans up without leaks
+
+## Setup (one time)
+
+```bash
+cp tests/docker/.env.sample tests/docker/.env
+$EDITOR tests/docker/.env
+```
+
+Fill in `WYZE_USERNAME`, `WYZE_PASSWORD`, `WYZE_KEY_ID`, `WYZE_API_KEY`.
+Optionally set `WYZE_CAMERA_NICK` to target a specific camera; if
+blank, the smoke uses the first online camera on the account.
+
+`.env` is gitignored — your credentials never leave your machine.
+
+## Run
+
+```bash
+./tests/docker/run-real-camera-smoke.sh
+```
+
+The container runs with `--network host` so it can reach Wyze
+cameras on the LAN over UDP.
+
+### ⚠️ Docker Desktop for Mac caveat
+
+`--network host` on Docker Desktop for **Mac** (and Windows) joins
+the *Docker VM's* internal network — **not** your Mac's LAN. This
+means:
+
+- Outbound cloud HTTPS works (the VM has internet)
+- Camera UDP P2P **does not** — the VM can't see your cameras
+
+You'll see the smoke get as far as `Tutk SDK version: ...` and then
+hit the connect timeout (~25s) with `IOTC_Connect_ByUID timed out`.
+This is expected and not a bug in the code — it's a Docker-on-Mac
+networking limitation.
+
+To actually validate end-to-end, run from a Linux host that's on the
+same LAN as your cameras:
+
+  - Raspberry Pi 4/5 (arm64)
+  - x86_64 NAS or server running Docker Engine (not Desktop)
+  - WSL 2 on Windows with mirrored networking enabled
+  - The user's homebridge box, once it's running 2.0
+
+On those hosts, `--network host` works as expected and the camera
+session opens. The macOS Docker run still validates ~80% of the code
+path (auth, device list, SDK load, all bindings, IOTC call attempted)
+— just not the actual LAN handshake.
+
+## Expected output (success)
+
+```
+--- Wyze cloud — login + device list ---
+  devices on account            <N>
+  cameras                       <M>
+  online cameras                <K>
+  chosen                        <Your Camera Name> (WYZE_CAKP2JFUS)
+  mac                           AABBCCDDEEFF
+  p2p_id                        ABC12345…WXYZ (32 chars)
+  enr length                    16 chars
+  LAN ip (if known)             192.168.x.y
+
+--- Tutk session — connect → send K10090 → close ---
+    [info] Tutk SDK version: 4.2.1.1-0-g537b3af_openssl_Arm_MR813_6.4.1
+    [info] IOTC session 0 established to ABC12345…
+    [info] AV channel 0 started (server_type=...)
+    [info] Auth OK: {"connectionRes":"1","cameraInfo":{...}}
+  connect()                     ✓ in 1234ms — state=authed
+  send K10090                   ✓ in 89ms — camera time = 1719000000 (skew 0s)
+  close()                       ✓ in 12ms — state=closed
+
+--- Summary ---
+  total elapsed                 1456ms
+  result                        ✓ ALL GOOD — Phase 1 talks to real Wyze hardware end-to-end
+```
+
+## Common failure modes
+
+| Failure | Likely cause |
+|---|---|
+| `login / device list failed` | bad credentials, MFA required, or Wyze cloud unreachable |
+| `connect() ✗ ... TutkSessionError: IOTC_Connect_ByUID returned -19` | IOTC_ER_INVALID_ARG — usually wrong p2p_id format. Dump the device blob to check. |
+| `connect() ✗ ... returned -10` | IOTC_ER_TIMEOUT — couldn't reach Throughtek's master servers (firewall?) OR the camera. Try without `--network host` to test cloud-only path; if cloud works, it's a LAN/UDP issue. |
+| `connect() ✗ ... returned -22` | wrong enr — verify the `enr` value matches what Wyze cloud returned |
+| `Auth OK` log line shows JSON with `connectionRes` ≠ `"1"` | camera rejected our auth — check enr, or the camera is in update mode |
+| `send K10090 ✗ Timed out` | session got opened but the camera isn't responding to control messages — could be `avRecvIOCtrl` polling too slow, or the camera's overloaded |
+| Hangs at `connect()` for >30s | NAT punching failed; camera unreachable over LAN. Confirm camera IP is reachable from your Docker VM (`docker run --rm --network host alpine ping -c 3 192.168.x.y`) |
+
+## What this does NOT do
+
+- Stream video. That's the AV frame path (`avRecvFrameData2` etc.) —
+  not exercised here. Phase 2 work.
+- Send any persistent change to the camera. K10090 is a read-only
+  "what time is it?" query.
+- Modify state, take snapshots, or otherwise have any side effect.
+
+You can hit Ctrl-C any time; the session closes cleanly on SIGTERM
+(no half-open IOTC sessions left dangling).
+

@@ -1,0 +1,46 @@
+# Real-camera smoke test image — adds the wyze-api npm deps so we can
+# call the cloud API + Tutk loader against actual hardware.
+#
+# Build the same way as the loader smoke:
+#   docker build -f tests/docker/Dockerfile.real-camera -t wyze-api-real-camera .
+#
+# But RUN with --network host so the container can reach Wyze cameras
+# on your LAN. Cloud API works fine without --network host (just HTTPS),
+# but the Tutk session needs UDP to/from your LAN subnet.
+#
+# IMPORTANT: pass credentials via env vars, not bake them into the image.
+#
+#   docker run --rm --network host \
+#     -e WYZE_USERNAME=... -e WYZE_PASSWORD=... \
+#     -e WYZE_KEY_ID=... -e WYZE_API_KEY=... \
+#     -e WYZE_CAMERA_NICK="<your camera nickname>" \
+#     wyze-api-real-camera
+
+FROM debian:stable-slim
+
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends ca-certificates curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Full prod deps — we need axios + koffi for cloud calls + Tutk loading.
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Source tree
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY example/ ./example/
+COPY tests/docker/ ./tests/docker/
+
+# Pre-fetch the .so at build time so the runtime test has nothing to
+# download. WYZE_SDK_ALLOW_NON_LINUX is irrelevant here (this IS Linux).
+RUN node scripts/fetch-wyze-sdk.js --type tutk --yes && \
+    ls -lh /root/.homebridge/wyze-sdk/
+
+CMD ["node", "tests/docker/connect-real-camera.js"]
