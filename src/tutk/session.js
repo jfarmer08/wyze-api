@@ -118,7 +118,11 @@ class TutkSession {
    * @param {number} [opts.connectTimeoutMs=25000] — JS-side ceiling on
    *   the IOTC_Connect_ByUID call. The SDK's own timeout is ~30s; this
    *   guarantees we surface a clear error to the caller well before
-   *   any background hang becomes a debugging nightmare.
+   *   any background hang becomes a debugging nightmare. Only works
+   *   because we use the koffi.async variant of the SDK call (worker
+   *   pool); the sync variant would block the event loop and prevent
+   *   the JS-side timer from firing.
+   * @param {number} [opts.avStartTimeoutMs=25000] — same, for avClientStartEx.
    * @param {string} [opts.soPath] — override .so location (default ~/.homebridge/wyze-sdk/...)
    * @param {(model, protocol, command) => boolean} [opts.supports]
    * @param {(level, msg) => void} [opts.log] — logger
@@ -158,19 +162,19 @@ class TutkSession {
     this.sdk = _acquireSdk(this.opts.soPath);
     this.log("info", `Tutk SDK version: ${this.sdk.getVersionString()}`);
 
-    // 1. Open IOTC session by UID. This blocks synchronously inside
-    //    the SDK until either a session opens or its internal timeout
-    //    fires (usually 15–30s). On Docker Desktop for Mac, where
-    //    --network host points at the Docker VM's network and not
-    //    your LAN, this hang has no upper bound from the caller's
-    //    perspective — so we wrap with an explicit JS-side timeout
-    //    and force-cleanup on miss.
+    // 1. Open IOTC session by UID. The Async variant runs on koffi's
+    //    worker pool so the Node event loop stays responsive — meaning
+    //    a Promise.race against setTimeout can actually fire. (The
+    //    sync variant blocks the loop, defeating any JS-side timeout
+    //    — earlier draft of this code did exactly that.)
     //
-    //    The connectTimeoutMs option lets callers tune this; default
-    //    is 25s which is just under the SDK's own ~30s typical limit.
+    //    connectTimeoutMs is the JS-side ceiling. The SDK keeps
+    //    running on its worker thread when our timeout fires; we just
+    //    stop awaiting. The worker eventually returns when the SDK's
+    //    own ~30s timeout fires.
     const connectTimeoutMs = this.opts.connectTimeoutMs || 25_000;
-    const sid = await this._withTimeout(
-      () => this.sdk.connectByUid(this.opts.uid),
+    const sid = await this._raceTimeout(
+      this.sdk.connectByUidAsync(this.opts.uid),
       connectTimeoutMs,
       `IOTC_Connect_ByUID timed out after ${connectTimeoutMs}ms (no response from camera ${this.opts.uid})`
     );
@@ -181,16 +185,21 @@ class TutkSession {
     this.sessionId = sid;
     this.log("info", `IOTC session ${sid} established to ${this.opts.uid}`);
 
-    // 2. Start AV client channel on top of the IOTC session
-    const { chanId, out } = this.sdk.avClientStartEx({
-      sessionId: sid,
-      channelId: 0,
-      timeoutSec: 20,
-      username: this.opts.phoneId,
-      password: this.opts.openUserId, // SDK uses this slot for auth
-      resend: 1,
-      securityMode: 2,
-    });
+    // 2. Start AV client channel — also async + race-timeout.
+    const avStartTimeoutMs = this.opts.avStartTimeoutMs || 25_000;
+    const { chanId, out } = await this._raceTimeout(
+      this.sdk.avClientStartExAsync({
+        sessionId: sid,
+        channelId: 0,
+        timeoutSec: 20,
+        username: this.opts.phoneId,
+        password: this.opts.openUserId, // SDK uses this slot for auth
+        resend: 1,
+        securityMode: 2,
+      }),
+      avStartTimeoutMs,
+      `avClientStartEx timed out after ${avStartTimeoutMs}ms`
+    );
     if (chanId < 0) {
       this.sdk.sessionClose(sid);
       _releaseSdk();
@@ -353,52 +362,27 @@ class TutkSession {
   }
 
   /**
-   * Run a synchronous SDK call in the next event-loop tick and race it
-   * against a JS-side timeout. The SDK call still blocks for the
-   * full timeout if the network never responds — we can't actually
-   * interrupt a sync call across the FFI boundary — but the *promise*
-   * resolves on time, so callers can move on and we can mark the
-   * session as broken without hanging indefinitely.
+   * Race a Promise (typically a koffi.async SDK call) against a
+   * setTimeout. Returns the Promise's value if it settles first, or
+   * rejects with a TutkSessionError if the timeout fires first.
    *
-   * In practice the SDK has its own internal timeout (15–30s) and
-   * returns a negative error code, so the orphaned thread cleans up
-   * shortly after our JS timeout fires.
+   * This relies on the input promise actually being from a worker-pool
+   * call — `koffi.func.async()` qualifies, `setImmediate(() => syncFn())`
+   * does NOT (the sync call blocks the loop, preventing the timer
+   * from firing on time).
    *
    * @template T
-   * @param {() => T} fn
+   * @param {Promise<T>} promise
    * @param {number} timeoutMs
    * @param {string} errMessage
    * @returns {Promise<T>}
    */
-  _withTimeout(fn, timeoutMs, errMessage) {
-    return new Promise((resolve, reject) => {
-      let settled = false;
-      const t = setTimeout(() => {
-        if (!settled) {
-          settled = true;
-          reject(new TutkSessionError(errMessage));
-        }
-      }, timeoutMs);
-      // setImmediate keeps the synchronous SDK call off the same tick
-      // as the timer setup; otherwise a slow JS-side step before fn()
-      // would also count against the budget.
-      setImmediate(() => {
-        try {
-          const result = fn();
-          if (!settled) {
-            settled = true;
-            clearTimeout(t);
-            resolve(result);
-          }
-        } catch (e) {
-          if (!settled) {
-            settled = true;
-            clearTimeout(t);
-            reject(e);
-          }
-        }
-      });
+  _raceTimeout(promise, timeoutMs, errMessage) {
+    let timer;
+    const timeout = new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new TutkSessionError(errMessage)), timeoutMs);
     });
+    return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
   }
 
   _expirePending() {

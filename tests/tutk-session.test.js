@@ -43,11 +43,16 @@ function makeStubSdk(camResponses = []) {
       getVersionString: () => "STUB 4.0.0",
       iotcInitialize2: (_port) => 0,
       iotcDeInitialize: () => 0,
+      // Sync + async variants — production code calls *Async, but the
+      // sync ones are retained on the SDK surface, so we stub both.
       connectByUid: (_uid) => sessionIdSeq++,
+      connectByUidAsync: (_uid) => Promise.resolve(sessionIdSeq++),
       sessionClose: (_sid) => {},
       avInitialize: (_n) => 8,
       avDeInitialize: () => 0,
-      avClientStartEx: (_args) => ({ chanId: chanIdSeq++, out: { server_type: 0 } }),
+      avClientStartEx: (_args) => ({ chanId: chanIdSeq, out: { server_type: 0 } }),
+      avClientStartExAsync: (_args) =>
+        Promise.resolve({ chanId: chanIdSeq++, out: { server_type: 0 } }),
       avClientStop: (_c) => {},
       avSendIoCtrlExit: (_c) => {},
       avSendIoCtrl: (_chan, _type, data) => {
@@ -245,7 +250,7 @@ test("close() rejects pending sends with SessionClosedError", async () => {
 
 test("connect() reports IOTC error code on failure", async () => {
   const stub = makeStubSdk([]);
-  stub.sdk.connectByUid = () => -3; // simulate IOTC_ER_NETWORK_UNREACHABLE
+  stub.sdk.connectByUidAsync = () => Promise.resolve(-3); // simulate IOTC_ER_NETWORK_UNREACHABLE
   const loaderPath = require.resolve("../src/tutk/loader");
   const orig = require.cache[loaderPath].exports;
   require.cache[loaderPath] = {

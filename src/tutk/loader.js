@@ -231,6 +231,35 @@ function loadTutk(soPath) {
   // The raw bindings stay accessible via `.raw` for cases the wrapper
   // doesn't cover.
 
+  // Helper shared between avClientStartEx (sync) and avClientStartExAsync.
+  // Builds the two SDK structs from a JS-friendly options object.
+  function _buildAvClientStartArgs({
+    sessionId, channelId = 0, timeoutSec = 20,
+    username, password, resend = 1, securityMode = 2,
+  }) {
+    const avcIn = {
+      cb: 40, // sizeof(AVClientStartInConfig) — SDK validates this field
+      iotc_session_id: sessionId,
+      iotc_channel_id: channelId,
+      timeout_sec: timeoutSec,
+      account_or_identity: username,
+      password_or_token: password,
+      resend,
+      security_mode: securityMode,
+      auth_type: 0,
+      sync_recv_data: 0,
+    };
+    const avcOut = {
+      cb: 24,
+      server_type: 0,
+      resend: 0,
+      two_way_streaming: 0,
+      sync_recv_data: 0,
+      security_mode: 0,
+    };
+    return { avcIn, avcOut };
+  }
+
   return {
     raw: fns,
     koffi,
@@ -258,14 +287,52 @@ function loadTutk(soPath) {
       return fns.TUTK_SDK_Set_License_Key(key);
     },
 
-    /** Open an IOTC session by camera UID. Returns the session id (>=0) or an error code. */
+    /**
+     * Open an IOTC session by camera UID. **Blocks the calling thread**
+     * for up to ~30s while the SDK negotiates with Throughtek's master
+     * servers + the camera. Use the async variant below for anything
+     * that needs the event loop to stay responsive.
+     *
+     * @returns {number} session id (>=0) or negative IOTC error code
+     */
     connectByUid(uid) {
       return fns.IOTC_Connect_ByUID(uid);
     },
 
-    /** Same with explicit local/remote endpoints. */
+    /**
+     * Async version — runs on koffi's worker pool, returns a Promise
+     * so the JS event loop stays free. This is what TutkSession uses
+     * so its own JS-side timeout (Promise.race + setTimeout) can
+     * actually fire.
+     *
+     * Note: cancellation from JS is best-effort — the SDK call still
+     * runs to completion on the worker thread. We just stop awaiting
+     * its result. The worker eventually returns when the SDK's own
+     * timeout fires (~30s).
+     *
+     * @returns {Promise<number>}
+     */
+    connectByUidAsync(uid) {
+      return new Promise((resolve, reject) => {
+        fns.IOTC_Connect_ByUID.async(uid, (err, res) => {
+          if (err) reject(err); else resolve(res);
+        });
+      });
+    },
+
+    /** Same with explicit local/remote endpoints. Blocking. */
     connectByUidEx(uid, localIp, remoteIp, localPort, remotePort, timeoutMs) {
       return fns.IOTC_Connect_ByUIDEx(uid, localIp, remoteIp, localPort, remotePort, timeoutMs);
+    },
+
+    /** Async version of connectByUidEx. */
+    connectByUidExAsync(uid, localIp, remoteIp, localPort, remotePort, timeoutMs) {
+      return new Promise((resolve, reject) => {
+        fns.IOTC_Connect_ByUIDEx.async(
+          uid, localIp, remoteIp, localPort, remotePort, timeoutMs,
+          (err, res) => err ? reject(err) : resolve(res)
+        );
+      });
     },
 
     /** Close an open session. */
@@ -293,31 +360,27 @@ function loadTutk(soPath) {
 
     /**
      * Start an AV client channel on top of an existing IOTC session.
-     * Returns the av_chan_id (>=0) or a negative error code.
+     * **Blocks** for up to `timeoutSec` seconds while the SDK runs the
+     * channel handshake. Returns `{chanId, out}` where chanId >= 0 on
+     * success or negative on error.
      */
-    avClientStartEx({ sessionId, channelId = 0, timeoutSec = 20, username, password, resend = 1, securityMode = 2 }) {
-      const avcIn = {
-        cb: 40, // sizeof(AVClientStartInConfig) — koffi computes this for us if we pass a struct ptr, but the SDK validates the field
-        iotc_session_id: sessionId,
-        iotc_channel_id: channelId,
-        timeout_sec: timeoutSec,
-        account_or_identity: username,
-        password_or_token: password,
-        resend,
-        security_mode: securityMode,
-        auth_type: 0,
-        sync_recv_data: 0,
-      };
-      const avcOut = {
-        cb: 24,
-        server_type: 0,
-        resend: 0,
-        two_way_streaming: 0,
-        sync_recv_data: 0,
-        security_mode: 0,
-      };
+    avClientStartEx(opts) {
+      const { avcIn, avcOut } = _buildAvClientStartArgs(opts);
       const chanId = fns.avClientStartEx(avcIn, avcOut);
       return { chanId, out: avcOut };
+    },
+
+    /**
+     * Async version of avClientStartEx — runs on the worker pool.
+     * Returns a Promise that resolves with `{chanId, out}`.
+     */
+    avClientStartExAsync(opts) {
+      const { avcIn, avcOut } = _buildAvClientStartArgs(opts);
+      return new Promise((resolve, reject) => {
+        fns.avClientStartEx.async(avcIn, avcOut, (err, chanId) => {
+          if (err) reject(err); else resolve({ chanId, out: avcOut });
+        });
+      });
     },
 
     /** Stop an AV client channel. */
@@ -345,8 +408,12 @@ function loadTutk(soPath) {
     },
 
     /**
-     * Receive an IOCtrl frame (response from the camera). Blocks until
-     * data is available or the timeout (in ms) expires.
+     * Receive an IOCtrl frame (response from the camera). **Blocks**
+     * the calling thread for up to `timeoutMs` while waiting for
+     * data. The session orchestrator currently uses this with a 1ms
+     * timeout in a setInterval poll loop, which keeps the block
+     * negligible — but moving to avRecvIoCtrlAsync (below) would let
+     * us use longer waits without stalling the event loop.
      *
      * @returns {{ ctrlType: number, data: Buffer } | { errno: number }}
      */
@@ -359,6 +426,28 @@ function loadTutk(soPath) {
         ctrlType: typeOut.readUInt32LE(0),
         data: Buffer.from(buf.subarray(0, errno)),
       };
+    },
+
+    /**
+     * Async version of avRecvIoCtrl — runs on koffi's worker pool.
+     * Pair with a longer `timeoutMs` to avoid burning a worker thread
+     * on busy-polling.
+     *
+     * @returns {Promise<{ ctrlType: number, data: Buffer } | { errno: number }>}
+     */
+    avRecvIoCtrlAsync(chanId, timeoutMs = 1000, maxLen = 65536) {
+      const buf = Buffer.alloc(maxLen);
+      const typeOut = Buffer.alloc(4);
+      return new Promise((resolve, reject) => {
+        fns.avRecvIOCtrl.async(chanId, typeOut, buf, maxLen, timeoutMs, (err, errno) => {
+          if (err) return reject(err);
+          if (errno < 0) return resolve({ errno });
+          resolve({
+            ctrlType: typeOut.readUInt32LE(0),
+            data: Buffer.from(buf.subarray(0, errno)),
+          });
+        });
+      });
     },
   };
 }
