@@ -4,8 +4,12 @@
   "description": "An unoficial API wrapper for Wyze products.",
   "homepage": "https://github.com/jfarmer08/wyze-api",
   "main": "./src/index.js",
+  "bin": {
+    "wyze-api-fetch-wyze-sdk": "scripts/fetch-wyze-sdk.js"
+  },
   "scripts": {
-    "test": "node --test --test-reporter=spec tests/*.test.js"
+    "test": "node --test --test-reporter=spec tests/*.test.js",
+    "fetch-wyze-sdk": "node scripts/fetch-wyze-sdk.js"
   },
   "keywords": [
     "wyze",
