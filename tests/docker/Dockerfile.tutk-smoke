@@ -1,0 +1,60 @@
+# Tutk loader smoke test image — exercises the real libIOTCAPIs_ALL.so
+# inside a Linux container so we can validate Phase 1 from a Mac/Windows
+# dev box without needing a physical Pi/NAS.
+#
+# Image is intentionally minimal: Debian slim + Node + the wyze-api
+# source tree mounted at runtime. Fetches the .so at build time so the
+# resulting image is self-contained for repeated runs.
+#
+# Default base is debian:stable-slim — pulls a glibc Linux Throughtek's
+# SDK was compiled against. Alpine (musl) does NOT work; the .so
+# resolves dynamic libraries against the system loader, and musl differs
+# from glibc enough to fail.
+#
+# Build (Apple Silicon — auto-picks linux/arm64):
+#   docker build -f tests/docker/Dockerfile.tutk-smoke -t wyze-api-tutk-smoke .
+#
+# Build (force linux/amd64 to test the x86 .so on any host):
+#   docker build --platform linux/amd64 -f tests/docker/Dockerfile.tutk-smoke -t wyze-api-tutk-smoke .
+#
+# Run:
+#   docker run --rm wyze-api-tutk-smoke
+#
+# Run interactively for poking:
+#   docker run --rm -it wyze-api-tutk-smoke bash
+
+FROM debian:stable-slim
+
+# Node 20 LTS — matches what most homebridge installs ship.
+# (Newer Node versions work too; pinning to 20 keeps the image
+# reproducible across CI runs.)
+RUN apt-get update -y && \
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl gnupg \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files first so `npm ci` layer is cached when source-only
+# changes happen.
+COPY package.json package-lock.json* ./
+RUN npm install --omit=dev --no-audit --no-fund
+
+# Now the source. We only need what the smoke test imports.
+COPY src/ ./src/
+COPY scripts/ ./scripts/
+COPY example/ ./example/
+COPY tests/docker/ ./tests/docker/
+
+# Fetch the .so for this image's architecture at BUILD time.
+# WYZE_SDK_ALLOW_NON_LINUX is a no-op here (we ARE linux) — kept for
+# explicit-mode runs against amd64 from arm64 hosts via emulation.
+RUN node scripts/fetch-wyze-sdk.js --type tutk --yes && \
+    ls -lh /root/.homebridge/wyze-sdk/
+
+# Default command: run the smoke test.
+CMD ["node", "tests/docker/smoke.js"]
