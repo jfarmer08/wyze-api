@@ -129,32 +129,50 @@ blank, the smoke uses the first online camera on the account.
 The container runs with `--network host` so it can reach Wyze
 cameras on the LAN over UDP.
 
-### ⚠️ Docker Desktop for Mac caveat
+### Docker Desktop for Mac/Windows networking
 
-`--network host` on Docker Desktop for **Mac** (and Windows) joins
-the *Docker VM's* internal network — **not** your Mac's LAN. This
-means:
+By default, `--network host` on Docker Desktop for **Mac** (and
+Windows) joins the *Docker VM's* internal network — **not** your
+host's LAN. Outbound cloud HTTPS works (the VM has internet), but
+camera UDP P2P doesn't reach LAN devices.
 
-- Outbound cloud HTTPS works (the VM has internet)
-- Camera UDP P2P **does not** — the VM can't see your cameras
+Without a fix, the smoke gets as far as `Tutk SDK version: ...` and
+then hits the 25s connect timeout. That's not a code bug — it's
+Docker Desktop's network isolation.
 
-You'll see the smoke get as far as `Tutk SDK version: ...` and then
-hit the connect timeout (~25s) with `IOTC_Connect_ByUID timed out`.
-This is expected and not a bug in the code — it's a Docker-on-Mac
-networking limitation.
+**Three ways to actually share your host's LAN** (pick any one):
 
-To actually validate end-to-end, run from a Linux host that's on the
-same LAN as your cameras:
+1. **Docker Desktop's host-networking feature (recommended on Mac)**
 
-  - Raspberry Pi 4/5 (arm64)
-  - x86_64 NAS or server running Docker Engine (not Desktop)
-  - WSL 2 on Windows with mirrored networking enabled
-  - The user's homebridge box, once it's running 2.0
+   Docker Desktop **4.34+** added real host networking on macOS.
+   Enable it in Settings → Resources → Network → check
+   **"Enable host networking"**. Apply + restart Docker Desktop.
 
-On those hosts, `--network host` works as expected and the camera
-session opens. The macOS Docker run still validates ~80% of the code
-path (auth, device list, SDK load, all bindings, IOTC call attempted)
-— just not the actual LAN handshake.
+   Verify it took effect:
+
+   ```bash
+   docker run --rm --network host alpine ip addr | head -20
+   # should show your real LAN interface(s) (en0 etc.), not just docker0/eth0
+   ```
+
+   Once on, `--network host` shares your Mac's LAN for real — UDP P2P
+   to your cameras works.
+
+2. **OrbStack** (drop-in Docker Desktop replacement on Mac)
+
+   OrbStack containers get LAN-routable IPs by default. No settings
+   to flip — `--network host` and bridge networks both reach the LAN
+   directly. Less heavy than Docker Desktop overall.
+
+3. **Don't use Docker** — install Node 20 on a Linux host on the
+   same LAN (Pi, NAS, server, WSL 2 with mirrored networking) and
+   run `node tests/docker/connect-real-camera.js` directly. The
+   `.so` lives under `~/.homebridge/wyze-sdk/` either way.
+
+If none of those work, the macOS Docker smoke still validates ~80%
+of the code path (auth, device list, SDK load, all bindings, IOTC
+connect *attempted*) — use it as a binding/lifecycle regression
+test, then validate end-to-end on a real Linux LAN host.
 
 ## Expected output (success)
 

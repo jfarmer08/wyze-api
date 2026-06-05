@@ -160,6 +160,21 @@ async function main() {
     console.error(`  connect() ✗ in ${Date.now() - tConnect}ms`);
     console.error(`    ${e.name}: ${e.message}`);
     if (e.code !== undefined) console.error(`    sdk error code: ${e.code}`);
+    // Specific hint for the most common cause of "connect timed out"
+    // — Docker Desktop on Mac/Windows isolating the container from
+    // the LAN. See tests/docker/README.md for the three workarounds.
+    if (/timed out/.test(e.message) && camIp) {
+      console.error(``);
+      console.error(`    Hint: if you're running this in Docker on macOS/Windows, --network host`);
+      console.error(`    joins the Docker VM's network — NOT your host's LAN — so the container`);
+      console.error(`    can't reach the camera. Quick check from the container:`);
+      console.error(``);
+      console.error(`      docker run --rm --network host alpine ping -c 2 ${camIp}`);
+      console.error(``);
+      console.error(`    If that pings fail, see tests/docker/README.md "Docker Desktop for`);
+      console.error(`    Mac/Windows networking" — the host-networking setting fixes this on`);
+      console.error(`    Docker Desktop 4.34+.`);
+    }
     ok = false;
   }
 
