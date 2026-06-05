@@ -2,6 +2,12 @@
 
 How to fetch live WebRTC stream credentials from a Wyze camera and use them in your application.
 
+> **In progress: local LAN streaming.** A pure-JS port of the Tutk
+> IOTC protocol (used by V2/V3/V4/Pan/Outdoor/OG/Vacuum) is partially
+> in-tree. Control-plane (Phase 1) is done; A/V transport (Phase 3) is
+> planned. See [Local Protocol](Local-Protocol.md) for the full phase
+> table. Today's streaming path documented below is unchanged.
+
 ## Install
 
 ```bash

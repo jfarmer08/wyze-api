@@ -16,8 +16,8 @@
  * the comment at the bottom of this file.
  */
 
-const { RC5, derivePerFrameKey, idEncrypt, idDecrypt } = require("../lib/rc5");
-const { giotHashString } = require("../lib/session-crypto");
+const { RC5, derivePerFrameKey, idEncrypt, idDecrypt } = require("../../../src/gutes/lib/rc5");
+const { giotHashString } = require("../../../src/gutes/lib/session-crypto");
 
 let failures = 0;
 const fail = (msg) => { console.log(`  ✗ ${msg}`); failures++; };

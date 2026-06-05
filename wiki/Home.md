@@ -28,10 +28,14 @@ Full reference for [`wyze-api`](https://www.npmjs.com/package/wyze-api), an unof
 
 - **[Helpers](Helpers.md)** — battery / range / kelvin-mired / sleep / lock-state utilities
 - **[API Reference](API-Reference.md)** — module exports (`StreamStatus`, `Vacuum*`, `VenusDot*`, etc.)
+- **[Local Protocol (Tutk + GUTES)](Local-Protocol.md)** — pure-JS port status, phases, install-time `.so` fetch
 - **[Troubleshooting](Troubleshooting.md)** — common errors and fixes
 
 ## Out of scope
 
-- **TUTK protocol** (peer-to-peer direct camera streaming used by [docker-wyze-bridge](https://github.com/mrlt8/docker-wyze-bridge)) — different transport, requires native bindings.
 - **Persistent video relay** — this library hands you stream credentials and one-off frame captures. For continuous RTSP/HLS, pair with `go2rtc` or `docker-wyze-bridge`.
 - **Wyze official cloud APIs** — there's no public Wyze API; everything here uses the same internal endpoints the mobile app uses.
+
+> Local-LAN camera control via the Tutk and GUTES protocols is now
+> partially in-tree (Tutk Phase 1 complete, GUTES Phase 0 complete) —
+> see [Local Protocol](Local-Protocol.md) for the phase table.

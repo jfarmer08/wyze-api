@@ -1,23 +1,22 @@
-# GUTES Protocol Spike (Phase 0)
+# GUTES Protocol Spike
 
-Pure-JavaScript port of the **GUTES** P2P signaling protocol used by
-Wyze Gwell-based devices (Doorbell Pro, Doorbell Pro 2, certain other
-Gwell cameras).
+Demo + fixture tests for the pure-JS port of the **GUTES** P2P
+signaling protocol used by Wyze Gwell-based devices (Doorbell Pro,
+Doorbell Pro 2, certain other Gwell cameras).
 
-**Status:** Phase 0 — protocol primitives only, no `.so` loading, no
-networking against real devices yet. Validated against the reference
-Python implementation in [cryze](https://github.com/carTloyal123/cryze).
+**Status:** Phase 0 protocol primitives, validated against the
+reference Python implementation in
+[cryze](https://github.com/carTloyal123/cryze).
+
+The protocol modules originally lived here under `lib/`. They have
+been promoted into the package's main source tree at
+[`src/gutes/lib/`](../../src/gutes/lib/). This directory now keeps
+only the runnable demo + fixture tests.
 
 ## What's in this directory
 
 ```
 gutes-spike/
-├── lib/
-│   ├── constants.js         Frame type codes, header size, protocol bytes
-│   ├── rc5.js               RC5 cipher (8-byte + 16-byte block) + ID encrypt/decrypt
-│   ├── frame.js             Header parser, stream parser, GutesFrame object
-│   ├── session-crypto.js    Session-key derivation, sqnum extraction, hash
-│   └── builders.js          KEEPALIVE / KEEPALIVE_ACK builders + primitives
 ├── test/
 │   └── fixtures.test.js     Fixture vectors pinned against Python reference
 ├── parse-pcap.js            Read a tcpdump capture, decode GUTES frames in it
@@ -25,14 +24,22 @@ gutes-spike/
 └── README.md                you are here
 ```
 
+The actual modules live in `src/gutes/lib/`:
+
+- `constants.js`         Frame type codes, header size, protocol bytes
+- `rc5.js`               RC5 cipher (8-byte + 16-byte block) + ID encrypt/decrypt
+- `frame.js`             Header parser, stream parser, GutesFrame object
+- `session-crypto.js`    Session-key derivation, sqnum extraction, hash
+- `builders.js`          KEEPALIVE / KEEPALIVE_ACK builders + primitives
+
 ## Running
 
 ```bash
 # All units self-test on direct invocation:
-node lib/rc5.js
-node lib/frame.js
-node lib/session-crypto.js
-node lib/builders.js
+node ../../src/gutes/lib/rc5.js
+node ../../src/gutes/lib/frame.js
+node ../../src/gutes/lib/session-crypto.js
+node ../../src/gutes/lib/builders.js
 
 # Full protocol round-trip (build + parse + crypto):
 node spike.js
@@ -64,7 +71,7 @@ To re-verify the cross-language match yourself:
 # In a checkout of cryze:
 python3 src/relay/rc5.py
 # In this directory:
-node lib/rc5.js
+node ../../src/gutes/lib/rc5.js
 ```
 
 Both print identical hex output for `RC5-8B encrypt(zeros)`,
@@ -140,10 +147,9 @@ establishment (Phase 1, needs UDP networking + `.so` loading on Linux)
 and A/V transport (Phase 2, needs the `.so` unwrap functions to
 decode MTP_DATA into H.264). Both build on top of the layer here.
 
-## Phase 0 is NOT shipped to npm
+## Status in the shipped package
 
-This directory lives under `example/` and is excluded from the
-published package via `package.json`'s `files` field. It exists for
-development + manual verification only. When the work matures into
-something users actually run, the relevant code moves to `src/gutes/`
-and gets proper exports.
+The protocol modules now ship under `src/gutes/lib/` and are part of
+the published package. This `example/gutes-spike/` directory is
+excluded via `package.json`'s `files` field — it stays in-repo as a
+runnable demo + fixture-test harness for the protocol layer.

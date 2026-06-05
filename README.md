@@ -221,6 +221,49 @@ Lookups (async):
 - wyze.iot3GetProperties(deviceMac, deviceModel, props)
 - wyze.iot3RunAction(deviceMac, deviceModel, action)
 
+## Local camera protocol (Tutk + GUTES)
+
+`wyze-api` ships a pure-JS port of both Wyze local-LAN camera
+protocols so cameras can be controlled without going through Wyze's
+cloud HTTP API. This work is in-progress; the table below tracks
+where each protocol stands.
+
+### Tutk (V2 / V3 / V4 / Pan / Outdoor / OG / Doorbell v1 / Vacuum)
+
+| Phase | What | Status |
+|---|---|---|
+| **0**  | Pure-JS protocol layer (`src/tutk/lib/` — codec, header, K-class messages, xxtea, auth) — byte-exact against docker-wyze-bridge Python reference | ✅ done |
+| **1**  | `koffi` loader for `libIOTCAPIs_ALL.so` (`src/tutk/loader.js`) + Promise-based session/auth/IOCtrl mux (`src/tutk/session.js`), with koffi `.async()` for non-blocking blocking calls | ✅ done |
+| **1.5**| Self-test harness without the `.so` (stub SDK) + Docker smoke that loads the real `.so` (`tests/docker/`) + real-camera smoke (`tests/docker/connect-real-camera.js`) | ✅ done |
+| **2**  | Worker-thread receive pump (move 50 Hz `avRecvIOCtrl` poll off the main loop so video streaming is viable) | ⏳ planned |
+| **2.5**| Wire Tutk control into the homebridge bridge: route camera commands locally when Tutk is up, fall back to cloud HTTP otherwise | ⏳ planned |
+| **3**  | A/V transport — `avRecvFrameData2` → H.264 NALUs into a stream HomeKit can consume | ⏳ planned |
+
+Tutk runs on Linux only (the SDK ships glibc binaries for x86_64,
+arm64, armv7). macOS/Windows hosts can still talk to cameras through
+the cloud HTTP API as today.
+
+### GUTES (Doorbell Pro family / Gwell devices)
+
+| Phase | What | Status |
+|---|---|---|
+| **0** | Pure-JS protocol layer (`src/gutes/lib/` — RC5, frame parser, session crypto, KEEPALIVE builders, pcap reader) — byte-exact against cryze Python reference | ✅ done |
+| **1** | `libiotp2pav.so` loading via `koffi` — blocked on writing a Bionic-to-glibc shim (the GUTES `.so` is extracted from the Wyze APK and depends on Android's libc) | ❌ not started |
+| **2** | A/V transport (MTP_DATA reassembly into H.264 NALUs) — blocked on Phase 1 | ❌ not started |
+
+For the install-time `.so` fetcher (`libIOTCAPIs_ALL.so` from
+docker-wyze-bridge, `libiotp2pav.so` from an APKPure-sourced XAPK),
+see [`scripts/README.md`](scripts/README.md) and run
+`npx wyze-api-fetch-wyze-sdk`.
+
+### Deep-dive READMEs
+
+- [`src/tutk/README.md`](src/tutk/README.md) — loader + session details, lifecycle, thread model
+- [`src/gutes/README.md`](src/gutes/README.md) — protocol layer + Phase 1 wall (Bionic shim)
+- [`example/tutk-spike/README.md`](example/tutk-spike/README.md) — Tutk Phase 0 demo + fixtures
+- [`example/gutes-spike/README.md`](example/gutes-spike/README.md) — GUTES Phase 0 demo + pcap reader
+- [`tests/docker/README.md`](tests/docker/README.md) — Docker smoke harness + Docker Desktop on Mac UDP NAT caveats
+
 ## Other Info
 
 Special thanks to the following projects for reference and inspiration:

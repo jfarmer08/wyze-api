@@ -2,8 +2,7 @@
 
 Phase 1 production code — Tutk SDK loader + session orchestrator. This
 is the layer that actually talks to Wyze cameras over the local IOTC
-session using the JS protocol port from
-[`example/tutk-spike/`](../../example/tutk-spike/).
+session.
 
 ## Files
 
@@ -11,8 +10,14 @@ session using the JS protocol port from
 src/tutk/
 ├── loader.js   — koffi bindings for libIOTCAPIs_ALL.so
 ├── session.js  — Promise-based session/auth/IOCtrl mux
+├── lib/        — pure-JS protocol layer (Phase 0 port from
+│                 docker-wyze-bridge), see lib/ for details:
+│                 codec/header/messages/xxtea/auth/constants
 └── README.md   — you are here
 ```
+
+The runnable Phase 0 demo + fixture tests live in
+[`example/tutk-spike/`](../../example/tutk-spike/).
 
 ## Loader
 

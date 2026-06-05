@@ -23,15 +23,15 @@
  *   0 on success, 1 on any check failure.
  */
 
-const { RC5, GWELL_KEY, derivePerFrameKey, idEncrypt, idDecrypt } = require("./lib/rc5");
-const { TYPES, PROTOCOL, HEADER_SIZE, frameTypeName } = require("./lib/constants");
-const { parseFrame, readFrameFromStream } = require("./lib/frame");
+const { RC5, GWELL_KEY, derivePerFrameKey, idEncrypt, idDecrypt } = require("../../src/gutes/lib/rc5");
+const { TYPES, PROTOCOL, HEADER_SIZE, frameTypeName } = require("../../src/gutes/lib/constants");
+const { parseFrame, readFrameFromStream } = require("../../src/gutes/lib/frame");
 const {
   giotHashString,
   extractRequestSequenceNumber,
   verifySessionKey,
   extractServerKeyFromCertifyResp,
-} = require("./lib/session-crypto");
+} = require("../../src/gutes/lib/session-crypto");
 const {
   nextSqnum,
   makeServerChkval,
@@ -39,7 +39,7 @@ const {
   computeChkval,
   buildKeepalive,
   buildKeepaliveAck,
-} = require("./lib/builders");
+} = require("../../src/gutes/lib/builders");
 
 let failures = 0;
 function check(label, cond, detail) {

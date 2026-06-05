@@ -42,8 +42,8 @@
 
 const fs = require("fs");
 const path = require("path");
-const { parseFrame, readFrameFromStream } = require("./lib/frame");
-const { frameTypeName, PROTOCOL } = require("./lib/constants");
+const { parseFrame, readFrameFromStream } = require("../../src/gutes/lib/frame");
+const { frameTypeName, PROTOCOL } = require("../../src/gutes/lib/constants");
 
 // ---- Minimal pcap reader ------------------------------------------------
 //
