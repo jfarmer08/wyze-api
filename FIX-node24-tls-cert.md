@@ -67,28 +67,27 @@ require('https').request({host:'api.wyzecam.com', port:443, path:'/', method:'HE
 Both `api.wyzecam.com` and `yd-saas-toc.wyzecam.com` connect successfully once that one root cert is
 explicitly trusted — confirming this is the complete fix, not a partial mitigation.
 
-## The fix to implement here
+## The fix (implemented in v1.1.15)
 
-All HTTP calls in this package go through plain `axios.get/post/patch/delete(...)` with **no** custom
+All HTTP calls in this package went through plain `axios.get/post/patch/delete(...)` with **no** custom
 `https.Agent` or `ca` option anywhere (confirmed via `grep -rn "https.Agent\|rejectUnauthorized\|ca:" src/`).
-Every request currently depends entirely on whatever root store the host's Node binary happens to bundle.
+Every request depended entirely on whatever root store the host's Node binary happened to bundle.
 
-The fix: bundle the DigiCert Global Root CA certificate (and ideally the G2 root too, for future-proofing)
-inside this package, and pass it as an explicit trust anchor on every request — so trust no longer depends
-on the host's Node version at all.
+The fix: bundle the DigiCert Global Root CA certificate (and the G2 root too, for future-proofing)
+inside this package, and pass them as explicit trust anchors on every request — so trust no longer
+depends on the host's Node version at all.
 
-### Suggested implementation
+### Implementation
 
-1. Add a small bundled CA file, e.g. `src/certs/digicert-global-root-ca.pem` (and optionally
-   `digicert-global-root-g2.pem`), containing the PEM(s). These are public root certificates —
-   safe to vendor directly, no secrets involved.
+1. `src/certs/digicert-global-root-ca.pem` and `src/certs/digicert-global-root-g2.pem` — the vendored
+   PEMs. These are public root certificates, safe to vendor directly; no secrets involved.
 
-2. In `src/index.js`, near where `axios` is required (top of file) and where `_performRequest`
-   builds its request config (around line 166-180, look for `baseURL: this.apiBaseUrl`), create one
-   shared `https.Agent`:
+2. `src/httpsAgent.js` — a shared `https.Agent`, required by both `src/index.js` and `src/rokuAuth.js`
+   (module caching means it's constructed once and reused, not once per file):
 
    ```js
    const https = require("https");
+   const tls = require("tls");
    const fs = require("fs");
    const path = require("path");
 
@@ -97,35 +96,33 @@ on the host's Node version at all.
      fs.readFileSync(path.join(__dirname, "certs", "digicert-global-root-g2.pem")),
    ];
 
-   // Trust the standard system/Node CA bundle PLUS these pinned roots, so we're not
-   // solely dependent on whatever root store the host Node version ships with.
-   // https.globalAgent.options.ca is undefined by default (meaning "use Node's default
-   // bundle"); passing an explicit `ca` array to an Agent REPLACES the default bundle
-   // rather than adding to it, so the default roots must be included via
-   // `tls.rootCertificates` to preserve trust for every other host.
-   const tls = require("tls");
-   const httpsAgent = new https.Agent({
+   module.exports = new https.Agent({
      ca: [...tls.rootCertificates, ...EXTRA_CA_CERTS],
    });
    ```
 
-   **Important gotcha to handle carefully:** passing a custom `ca` option to `https.Agent`
+   **Important gotcha handled here:** passing a custom `ca` option to `https.Agent`
    REPLACES Node's default trust bundle for that agent — it does not append to it. So the
-   agent's `ca` list must include `tls.rootCertificates` (Node's own default roots) in
-   addition to the pinned DigiCert root, or every *other* HTTPS host this package talks to
-   (or will talk to in the future) will stop being trusted. Verify this specifically —
-   don't just test the two known-broken hosts and assume the rest still work.
+   agent's `ca` list includes `tls.rootCertificates` (Node's own default roots) in
+   addition to the pinned DigiCert roots, or every *other* HTTPS host this package talks to
+   would stop being trusted. Verified against `github.com` (an unrelated host) in addition
+   to the two known-broken hosts — see verification below.
 
-3. Pass `httpsAgent` in the axios config for every request. The simplest correct approach is
-   likely an axios instance created once (`axios.create({ httpsAgent })`) and used everywhere
-   `axios` is currently called directly, rather than adding `httpsAgent` to every individual
-   call site — check how many call sites there are first (there were ~20+ in `src/index.js`
-   plus one more in `src/rokuAuth.js` as of this writing) and prefer the shared-instance
-   approach to avoid missing one.
+3. Rather than threading `httpsAgent` through every individual call site (~24 across
+   `src/index.js` and `src/rokuAuth.js`), both files replace their top-level
+   `const axios = require("axios")` with `const axios = require("axios").create({ httpsAgent })`.
+   Every existing `axios.get/post/patch/delete/request(...)` and `axios(config)` call site picks
+   this up automatically, since they all resolve through the same module-scoped `axios` binding.
 
-4. Test using the exact reproduction steps above (Docker + node:24.18.0) before and after the
-   change, against both previously-failing hosts, to confirm the fix without needing a user
-   on an affected Node version to verify it.
+4. Verified with the exact reproduction steps above (Docker + node:24.18.0), against both
+   previously-failing hosts plus an unrelated host (`github.com`) to confirm the default trust
+   bundle wasn't clobbered:
+
+   ```
+   api.wyzecam.com status 403              (was: UNABLE_TO_GET_ISSUER_CERT_LOCALLY)
+   yd-saas-toc.wyzecam.com status 200      (was: UNABLE_TO_GET_ISSUER_CERT_LOCALLY)
+   github.com status 200                   (unrelated host, unaffected)
+   ```
 
 ## Downstream: this alone does not reach existing users
 
