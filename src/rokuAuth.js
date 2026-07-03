@@ -1,4 +1,5 @@
-const axios = require('axios');
+const httpsAgent = require('./httpsAgent');
+const axios = require('axios').create({ httpsAgent });
 const AWS = require('aws-sdk');
 const crypto = require('crypto');
 const querystring = require('querystring');

@@ -1,6 +1,5 @@
 //v0.1.1.8 Update on new releases
 
-const axios = require("axios");
 const fs = require("fs").promises;
 const path = require("path");
 const getUuid = require("uuid-by-string");
@@ -12,6 +11,9 @@ const constants = require("./constants");
 const util = require("./util");
 const RokuAuthLib = require("./rokuAuth")
 const types = require("./types");
+const httpsAgent = require("./httpsAgent");
+
+const axios = require("axios").create({ httpsAgent });
 
 const {
   VacuumControlType,
