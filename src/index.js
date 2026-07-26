@@ -343,11 +343,37 @@ module.exports = class WyzeAPI {
 
   async _handleAccessTokenError(result, errorMessage, code, url, data) {
     this.access_token = "";
-    await this.refreshToken().catch((err) => {
-      throw new Error(
-        `Refresh Token could not be used to get a new access token. ${err}`
+
+    // Fast path: try to refresh the access token.
+    try {
+      await this.refreshToken();
+    } catch (err) {
+      // The refresh token is also stale/invalid (e.g. expired, or the user
+      // regenerated their API key). The persisted token file is poisoned and
+      // would otherwise be reloaded every cycle, permanently blocking a full
+      // credential login. Discard it and perform a fresh login so the client
+      // can self-heal instead of wedging forever (see issue #306).
+      this.log.error(
+        `Refresh token could not be used; discarding persisted tokens and performing a full login. ${err}`
       );
-    });
+      this.access_token = "";
+      this.refresh_token = "";
+      await this._clearPersistedTokens();
+      try {
+        await this.login();
+      } catch (loginErr) {
+        return {
+          ...result,
+          ok: false,
+          data: result.data,
+          error: {
+            retryAfter: 0,
+            message: `Re-login failed after refresh token error. Error: ${loginErr}`,
+            code,
+          },
+        };
+      }
+    }
 
     return {
       ...result,
@@ -660,6 +686,23 @@ module.exports = class WyzeAPI {
       }
 
       // Consider implementing a fallback or recovery strategy here.
+    }
+  }
+
+  /**
+  * Deletes the persisted token file so a poisoned/expired token pair cannot be
+  * reloaded on the next login attempt. Missing file is treated as success.
+  */
+  async _clearPersistedTokens() {
+    try {
+      await fs.unlink(this._tokenPersistPath());
+      if (this.apiLogEnabled) {
+        this.log.info("Cleared persisted tokens.");
+      }
+    } catch (error) {
+      if (error.code !== "ENOENT") {
+        this.log.error(`Error clearing persisted tokens: ${error.message}`);
+      }
     }
   }
 

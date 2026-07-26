@@ -1,6 +1,9 @@
 # wyze-api
 
 ## Releases
+### v1.1.16
+- Fix authentication wedge when a persisted token pair is stale/invalid. `maybeLogin` reloads the persisted `wyze-<uuid>.json` and short-circuits before a full credential login can run; when the access token is rejected (`2001` `access token is error`) and the refresh token is also invalid (`1001` `INVALID_PARAMETER`), nothing cleared the poisoned file, so every cycle reloaded it and the full-login path stayed permanently unreachable — the client never recovered even with valid credentials. `_handleAccessTokenError` now discards the persisted tokens (`_clearPersistedTokens`) and performs a full login when a refresh fails, so the client self-heals. Fixes [homebridge-wyze-smart-home#306](https://github.com/jfarmer08/homebridge-wyze-smart-home/issues/306).
+
 ### v1.1.15
 - Fix `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` TLS errors on Node 24.18.0+. Node's NSS 3.123.1 root store update dropped the legacy DigiCert Global Root CA, breaking `api.wyzecam.com` and `yd-saas-toc.wyzecam.com` (the host behind `getLockInfo`/`controlLock`). All axios requests now go through a shared `https.Agent` (`src/httpsAgent.js`) that pins the DigiCert roots Wyze depends on alongside Node's default trust store. See [FIX-node24-tls-cert.md](FIX-node24-tls-cert.md) for the root-cause writeup. Fixes [homebridge-wyze-smart-home#307](https://github.com/jfarmer08/homebridge-wyze-smart-home/issues/307).
 
