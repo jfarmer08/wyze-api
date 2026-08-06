@@ -2,6 +2,16 @@
 
 ## Releases
 
+### v2.0.0-beta.2
+
+Merges `main`'s unreleased fixes (since the 2.0.0 branch's last sync at v1.1.11) into the 2.0.0 line. `main` and `2.0.0` had structurally diverged — `main` kept the monolithic `index.js`, `2.0.0` had already split into `src/devices/`/`src/services/` — so this was a manual reconciliation, not a mechanical merge.
+
+- **TLS root-pinning fix** (`src/httpsAgent.js` + bundled DigiCert roots) — fixes `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` on Node 24.18.0+, where the NSS 3.123.1 root-store update dropped the legacy DigiCert Global Root CA that `api.wyzecam.com` and `yd-saas-toc.wyzecam.com` depend on. Wired via `axios.defaults.httpsAgent` rather than `axios.create()` so it applies to every file that independently `require`s axios (devices/services/util), not just `index.js`.
+- **Ford API lock-signing fixes** for the original Wyze Lock (YD.LO1) — `getLockInfo` was sending unsigned GET params, and the token field name needs to differ by HTTP method (`access_token` for GET, `accessToken` for POST). Resolves `PARAM_SIGN_INVALID` / `PARAM_TIMESTAMP_INVALID`. (This branch's `src/utils/payloadFactory.js` already had equivalent logic independently — confirmed identical behavior, no functional change needed there.)
+- Camera-streaming bug fixes: replaced `moment().valueOf()` with `Date.now()`, fixed a missing `this.` context on a `runActionList` fallback call, removed the unused `moment` dependency.
+- **Fixed the `DX_PVLOC` (Palm Lock) dual-registration bug**: it was registered in both `LockBoltV2Models` and `CommonModels` in `types.js`, which could route Palm Lock devices to the generic switch handler instead of the lock accessory depending on dispatch order. Now only in `LockBoltV2Models`.
+- Typo fix in `package.json` description (`unoficial` → `unofficial`).
+
 ### v2.0.0-beta.1
 
 First 2.0 beta. Available on npm only via `npm install wyze-api@beta`. Stable users on the default `latest` tag are unaffected. Pairs with `homebridge-wyze-smart-home@2.0.0-beta.1`.
