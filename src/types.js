@@ -683,7 +683,10 @@ const WyzeAccessoryModels = Object.freeze({
   LockBoltV2Models:            Object.freeze({ DX_LB2: "DX_LB2", DX_PVLOC: "DX_PVLOC" }),
   TemperatureHumidityModels:   Object.freeze({ TH3U: "TH3U" }),
   LeakSensorModels:            Object.freeze({ WS3U: "WS3U" }),
-  CommonModels:                Object.freeze({ LightSwitch: "LD_SS1", Palm: "DX_PVLOC" }),
+  // NOTE: DX_PVLOC (Palm Lock) intentionally lives only in LockBoltV2Models
+  // above, not here — it needs the lock accessory (state, door contact,
+  // battery), not the generic switch handler.
+  CommonModels:                Object.freeze({ LightSwitch: "LD_SS1" }),
   S1GatewayModels:             Object.freeze({ GW3U: "GW3U" }),
   ThermostatModels:            Object.freeze({ CO_EA1: "CO_EA1" }),
   ThermostatRoomSensor:        Object.freeze({ CO_TH1: "CO_TH1" }),
