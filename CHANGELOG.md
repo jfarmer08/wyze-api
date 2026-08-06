@@ -1,6 +1,7 @@
 # wyze-api
 
 ## Releases
+
 ### v2.0.0-beta.1
 
 First 2.0 beta. Available on npm only via `npm install wyze-api@beta`. Stable users on the default `latest` tag are unaffected. Pairs with `homebridge-wyze-smart-home@2.0.0-beta.1`.
@@ -111,6 +112,20 @@ Full library documentation at https://github.com/jfarmer08/wyze-api/wiki — eve
 - 178/178 tests pass.
 - Production npm audit: 4 issues remain, all from the `werift` WebRTC chain (transitive `ip` SSRF + `uuid` bounds); no upstream fix available, deferred.
 - Two GitHub Actions workflows: `npm-publish-stable.yml` and `npm-publish-beta.yml`.
+
+### v1.1.15
+- Fix `UNABLE_TO_GET_ISSUER_CERT_LOCALLY` TLS errors on Node 24.18.0+. Node's NSS 3.123.1 root store update dropped the legacy DigiCert Global Root CA, breaking `api.wyzecam.com` and `yd-saas-toc.wyzecam.com` (the host behind `getLockInfo`/`controlLock`). All axios requests now go through a shared `https.Agent` (`src/httpsAgent.js`) that pins the DigiCert roots Wyze depends on alongside Node's default trust store. See [FIX-node24-tls-cert.md](FIX-node24-tls-cert.md) for the root-cause writeup. Fixes [homebridge-wyze-smart-home#307](https://github.com/jfarmer08/homebridge-wyze-smart-home/issues/307).
+
+### v1.1.14
+- Fix Ford API signing for original Wyze Lock (YD.LO1). Two bugs caused `PARAM_SIGN_INVALID` (`controlLock`) and `PARAM_TIMESTAMP_INVALID` (`getLockInfo`): `fordCreatePayload` signed over the original payload only instead of the full augmented payload (including `accessToken`/`key`/`timestamp`), and GET requests need `access_token` (snake_case) while POST requests need `accessToken` (camelCase). Fixes [homebridge-wyze-smart-home#300](https://github.com/jfarmer08/homebridge-wyze-smart-home/issues/300).
+
+### v1.1.13
+- Fix `getLockInfo` sending unsigned params to the Ford API. `config.params` was assigned before `fordCreatePayload` was called, so the `GetLockInfo` GET request went out without `key`/`timestamp`/`sign`/`accessToken`, causing error 17001 `PARAM_TIMESTAMP_INVALID` on the original Wyze Lock (YD.LO1). Fixes [homebridge-wyze-smart-home#300](https://github.com/jfarmer08/homebridge-wyze-smart-home/issues/300).
+
+### v1.1.12
+- Fix runtime crashes: replace `moment().valueOf()` with `Date.now()`; fix missing `this.` context on the `runActionList()` fallback call; replace global `print(token)` with `this.log.info(token)`.
+- Lazy-load `cameraStreamCapture` so requiring `werift`/`ffmpeg-static` at module parse time no longer crashes consumers (e.g. homebridge plugins running in Docker) that don't have those optional deps installed.
+- Remove the unused `moment` dependency.
 
 ### v1.1.11
 - Add Wyze Robot Vacuum support (model `JA_RO2`) via the Venus service. Resolves [#4](https://github.com/jfarmer08/wyze-api/issues/4). Patterned after [shauntarves/wyze-sdk](https://github.com/shauntarves/wyze-sdk/blob/master/wyze_sdk/api/devices/vacuums.py).
