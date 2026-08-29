@@ -1,6 +1,5 @@
 //v0.2.0.0 Update on new releases
 
-const axios = require("axios");
 const fs = require("fs").promises;
 const path = require("path");
 const getUuid = require("uuid-by-string");
@@ -8,9 +7,18 @@ const payloadFactory = require("./utils/payloadFactory");
 const crypto = require("./utils/crypto");
 const constants = require("./constants");
 const util = require("./util");
-const cameraStreamCapture = require("./devices/cameraStreamCapture");
 const types = require("./types");
 const { installRedirectGuard, WYZE_ALLOWED_HOSTNAMES } = require("./util/security");
+const httpsAgent = require("./httpsAgent");
+const axios = require("axios");
+
+// Pin the DigiCert roots Wyze's backend depends on into axios's shared
+// default agent. Mutating .defaults (rather than axios.create()) means this
+// applies to every axios call across this module AND the devices/services/
+// util files that each do their own `require("axios")` — they all resolve
+// to the same cached module instance. Fixes UNABLE_TO_GET_ISSUER_CERT_LOCALLY
+// on Node 24.18.0+ (NSS 3.123.1 dropped the legacy DigiCert Global Root CA).
+axios.defaults.httpsAgent = httpsAgent;
 
 // Install once at module load: blocks redirects on any axios request bound for
 // known Wyze hostnames so a 3xx can never silently send the bearer token to
