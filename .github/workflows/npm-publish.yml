@@ -56,7 +56,17 @@ jobs:
             exit 1
           fi
           echo "Publishing wyze-api@$VERSION"
-      - run: npm publish --access public
+      - name: Determine dist-tag
+        id: dist-tag
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then
+            PRERELEASE="${VERSION#*-}"
+            echo "tag=${PRERELEASE%%.*}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+      - run: npm publish --access public --tag "${{ steps.dist-tag.outputs.tag }}"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
